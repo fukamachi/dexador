@@ -16,12 +16,20 @@
   :version "0.1"
   :author "Eitaro Fukamachi"
   :license "MIT"
-  :depends-on (:lev
+  :depends-on (:usocket
                :fast-http
-               :quri)
+               :quri
+               :fast-io
+               #+sbcl :sb-cltl2
+               :alexandria)
   :components ((:module "src"
                 :components
-                ((:file "dexador"))))
+                ((:file "dexador" :depends-on ("backend"))
+                 (:file "util")
+                 (:module "backend"
+                  :depends-on ("util")
+                  :components
+                  ((:file "usocket"))))))
   :description ""
   :long-description
   #.(with-open-file (stream (merge-pathnames

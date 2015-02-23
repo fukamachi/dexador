@@ -1,6 +1,8 @@
 (in-package :cl-user)
 (defpackage dexador
-  (:use :cl))
+  (:nicknames :dex)
+  (:use :cl)
+  (:import-from :dexador.backend.usocket
+                :http-request)
+  (:export :http-request))
 (in-package :dexador)
-
-;; blah blah blah.
