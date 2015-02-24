@@ -116,6 +116,10 @@
     (write-header stream :user-agent #.*default-user-agent*)
     (write-header stream :host (uri-host uri))
     (write-header stream :accept "*/*")
+    (when (= version 1.1)
+      (if keep-alive
+          (write-header stream :connection "keep-alive")
+          (write-header stream :connection "close")))
     (write-sequence +crlf+ stream)
     (force-output stream)
     (let* ((http (make-http-response))

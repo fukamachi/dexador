@@ -138,6 +138,10 @@
                           (write-header :user-agent #.*default-user-agent* buffer)
                           (write-header :host (uri-host uri) buffer)
                           (write-header :accept "*/*" buffer)
+                          (when (= version 1.1)
+                            (if keep-alive
+                                (write-header :connection "keep-alive" buffer)
+                                (write-header :connection "close" buffer)))
                           (fast-write-sequence +crlf+ buffer))))
       (unwind-protect
            (wsys:write fd (static-vector-pointer request-data) (length request-data))
