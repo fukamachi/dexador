@@ -104,7 +104,7 @@
           `(fast-write-sequence (ascii-string-to-octets (string ,value)) ,buffer))
      (fast-write-sequence +crlf+ ,buffer)))
 
-(defun-careful request (uri &key (method :get) (version 1.1)
+(defun-careful request (uri &key verbose (method :get) (version 1.1)
                             content headers
                             keep-alive socket)
   (let ((uri (quri:uri uri))
@@ -162,7 +162,13 @@
                                   do (write-header name value buffer))
                           (fast-write-sequence +crlf+ buffer))))
       (unwind-protect
-           (wsys:write fd (static-vector-pointer request-data) (length request-data))
+           (progn
+             (when verbose
+               (format t "~&>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>~%")
+               (map nil (lambda (byte)
+                          (princ (code-char byte))) request-data)
+               (format t "~&>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>~%"))
+             (wsys:write fd (static-vector-pointer request-data) (length request-data)))
         (free-static-vector request-data)))
 
     ;; Sending the content
