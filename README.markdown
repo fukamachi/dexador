@@ -10,19 +10,19 @@ Dexador is yet another HTTP client for Common Lisp.
 
 ## API
 
-### \[Function\] (request uri &key method version socket keep-alive)
+### \[Function\] (request uri &key method version content headers keep-alive socket)
 
 Send an HTTP request to `uri`.
 
-### \[Function\] (get uri &key version socket keep-alive)
+### \[Function\] (get uri &key version headers keep-alive socket)
 
-### \[Function\] (post uri &key version socket keep-alive)
+### \[Function\] (post uri &key version headers content keep-alive socket)
 
-### \[Function\] (head uri &key version socket)
+### \[Function\] (head uri &key version headers socket)
 
-### \[Function\] (put uri &key version socket keep-alive)
+### \[Function\] (put uri &key version headers content keep-alive socket)
 
-### \[Function\] (delete uri &key version socket keep-alive)
+### \[Function\] (delete uri &key version headers keep-alive socket)
 
 ## Author
 
