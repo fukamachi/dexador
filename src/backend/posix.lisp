@@ -1,5 +1,6 @@
 (in-package :cl-user)
 (defpackage dexador.backend.posix
+  (:nicknames :dex.posix)
   (:use :cl
         :dexador.util)
   #+(or sbcl ccl cmu allegro)
