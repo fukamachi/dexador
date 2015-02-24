@@ -20,6 +20,7 @@
                :fast-http
                :quri
                :fast-io
+               :trivial-mimes
                :split-sequence
                #+sbcl :sb-cltl2
                :alexandria

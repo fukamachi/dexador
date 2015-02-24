@@ -18,15 +18,16 @@
            :delete))
 (in-package :dexador)
 
-(defun get (uri &key (version 1.1) socket keep-alive)
+(defun get (uri &key (version 1.1) keep-alive socket)
   (request uri :method :get
                :version version
                :socket socket
                :keep-alive keep-alive))
 
-(defun post (uri &key (version 1.1) socket keep-alive)
+(defun post (uri &key (version 1.1) content keep-alive socket)
   (request uri :method :post
                :version version
+               :content content
                :socket socket
                :keep-alive keep-alive))
 
@@ -36,13 +37,14 @@
                :socket socket
                :keep-alive nil))
 
-(defun put (uri &key (version 1.1) socket keep-alive)
+(defun put (uri &key (version 1.1) content keep-alive socket)
   (request uri :method :put
                :version version
+               :content content
                :socket socket
                :keep-alive keep-alive))
 
-(defun delete (uri &key (version 1.1) socket keep-alive)
+(defun delete (uri &key (version 1.1) keep-alive socket)
   (request uri :method :delete
                :version version
                :socket socket

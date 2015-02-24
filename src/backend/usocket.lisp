@@ -27,7 +27,10 @@
                 :uri-host
                 :uri-port
                 :uri-path
-                :uri-query)
+                :uri-query
+                :url-encode-params)
+  (:import-from :alexandria
+                :copy-stream)
   (:export :request))
 (in-package :dexador.backend.usocket)
 
@@ -103,9 +106,13 @@
                     (1.0 #.(ascii-string-to-octets "HTTP/1.0"))) stream)
   (write-sequence +crlf+ stream))
 
-(defun-careful request (uri &key (method :get) (version 1.1) socket
-                            keep-alive)
+(defun-careful request (uri &key (method :get) (version 1.1)
+                            content
+                            keep-alive socket)
   (let* ((uri (quri:uri uri))
+         (content (if (consp content)
+                      (quri:url-encode-params content)
+                      content))
          (socket (or socket
                      (usocket:socket-connect (uri-host uri)
                                              (uri-port uri)
@@ -120,8 +127,24 @@
       (if keep-alive
           (write-header stream :connection "keep-alive")
           (write-header stream :connection "close")))
+    (etypecase content
+      (null)
+      (string
+       (write-header stream :content-type "application/x-www-form-urlencoded")
+       (write-header stream :content-length (princ-to-string (length content))))
+      (pathname
+       (write-header stream :content-type (mimes:mime content))
+       (with-open-file (in content)
+         (write-header stream :content-length (princ-to-string (file-length in))))))
     (write-sequence +crlf+ stream)
     (force-output stream)
+
+    ;; Sending the content
+    (etypecase content
+      (null)
+      (string (write-string content stream))
+      (pathname (with-open-file (in content)
+                  (copy-stream in stream))))
     (let* ((http (make-http-response))
            (body (make-output-buffer))
            (finishedp nil)

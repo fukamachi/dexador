@@ -25,15 +25,19 @@
   (:import-from :cffi
                 :with-foreign-object
                 :with-foreign-slots
-                :foreign-type-size)
+                :foreign-type-size
+                :with-pointer-to-vector-data)
   (:import-from :static-vectors
                 :make-static-vector
                 :static-vector-pointer
                 :free-static-vector)
+  (:import-from :trivial-mimes
+                :mime)
   (:import-from :quri
                 :uri-host
                 :uri-path
                 :uri-query
+                :url-encode-params
                 :render-uri)
   (:import-from :fast-io
                 :with-fast-output
@@ -113,9 +117,13 @@
                                 ,buffer))
      (fast-write-sequence +crlf+ ,buffer)))
 
-(defun-careful request (uri &key (method :get) (version 1.1) socket
-                            keep-alive)
+(defun-careful request (uri &key (method :get) (version 1.1)
+                            content
+                            keep-alive socket)
   (let ((uri (quri:uri uri))
+        (content (if (consp content)
+                     (quri:url-encode-params content)
+                     content))
         (fd (or socket
                 (wsock:socket wsock:+AF-INET+ wsock:+SOCK-STREAM+ 0))))
     (declare (type fixnum fd))
@@ -142,10 +150,34 @@
                             (if keep-alive
                                 (write-header :connection "keep-alive" buffer)
                                 (write-header :connection "close" buffer)))
+                          (etypecase content
+                            (null)
+                            (string
+                             (write-header :content-type "application/x-www-form-urlencoded" buffer)
+                             (write-header :content-length (princ-to-string (length content)) buffer))
+                            (pathname
+                             (write-header :content-type (mimes:mime content) buffer)
+                             (with-open-file (in content)
+                               (write-header :content-length (princ-to-string (file-length in)) buffer))))
                           (fast-write-sequence +crlf+ buffer))))
       (unwind-protect
            (wsys:write fd (static-vector-pointer request-data) (length request-data))
         (free-static-vector request-data)))
+
+    ;; Sending the content
+    (etypecase content
+      (null)
+      (string (let ((content (ascii-string-to-octets content)))
+                (cffi:with-pointer-to-vector-data (content-sap content)
+                  (wsys:write fd content-sap (length content)))))
+      (pathname
+       (let ((buffer (make-static-vector 1024)))
+         (unwind-protect
+              (with-open-file (in content)
+                (loop for n = (read-sequence buffer in)
+                      do (wsys:write fd (static-vector-pointer buffer) n)
+                      while (= n 1024)))
+           (free-static-vector buffer)))))
 
     (let* ((input-buffer (make-static-vector 1024))
            (body (make-output-buffer))
