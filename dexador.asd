@@ -20,12 +20,16 @@
                :fast-http
                :quri
                :fast-io
-               :wsock
                :split-sequence
-               :swap-bytes
-               :static-vectors
                #+sbcl :sb-cltl2
-               :alexandria)
+               :alexandria
+
+               #+(and unix (not clisp))
+               :wsock
+               #+(and unix (not clisp))
+               :static-vectors
+               #+(and unix (not clisp))
+               :swap-bytes)
   :components ((:module "src"
                 :components
                 ((:file "dexador" :depends-on ("backend"))
@@ -34,6 +38,7 @@
                   :depends-on ("util")
                   :components
                   ((:file "usocket")
+                   #+(and unix (not clisp))
                    (:file "posix"))))))
   :description ""
   :long-description
