@@ -63,7 +63,7 @@
      (ash (aref vector 2) 8)
      (aref vector 3)))
 
-(defun write-first-line (method uri protocol buffer)
+(defun write-first-line (method uri version buffer)
   (fast-write-sequence (ascii-string-to-octets (string method)) buffer)
   (fast-write-byte #.(char-code #\Space) buffer)
   (fast-write-sequence (ascii-string-to-octets (format nil "~A~:[~;~:*?~A~]"
@@ -71,7 +71,9 @@
                                                        (uri-query uri)))
                        buffer)
   (fast-write-byte #.(char-code #\Space) buffer)
-  (fast-write-sequence (ascii-string-to-octets (string protocol)) buffer)
+  (fast-write-sequence (ecase version
+                         (1.1 #.(ascii-string-to-octets "HTTP/1.1"))
+                         (1.0 #.(ascii-string-to-octets "HTTP/1.0"))) buffer)
   (fast-write-sequence +crlf+ buffer))
 
 (defun-speedy write-ascii-string (string buffer)
@@ -111,7 +113,7 @@
                                 ,buffer))
      (fast-write-sequence +crlf+ ,buffer)))
 
-(defun-careful request (uri &key (method :get) (protocol :http/1.1) socket
+(defun-careful request (uri &key (method :get) (version 1.1) socket
                             keep-alive)
   (let ((uri (quri:uri uri))
         (fd (or socket
@@ -132,7 +134,7 @@
                  (quri:render-uri uri)
                  errno))))
     (let ((request-data (with-fast-output (buffer :static)
-                          (write-first-line method uri protocol buffer)
+                          (write-first-line method uri version buffer)
                           (write-header :user-agent #.*default-user-agent* buffer)
                           (write-header :host (uri-host uri) buffer)
                           (write-header :accept "*/*" buffer)

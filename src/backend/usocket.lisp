@@ -90,7 +90,7 @@
             (fast-write-byte next-byte buf)
             (go read-lf)))))))
 
-(defun write-first-line (method uri protocol stream)
+(defun write-first-line (method uri version stream)
   (write-sequence (ascii-string-to-octets (string method)) stream)
   (write-byte #.(char-code #\Space) stream)
   (write-sequence (ascii-string-to-octets (format nil "~A~:[~;~:*?~A~]"
@@ -98,10 +98,12 @@
                                                   (uri-query uri)))
                   stream)
   (write-byte #.(char-code #\Space) stream)
-  (write-sequence (ascii-string-to-octets (string protocol)) stream)
+  (write-sequence (ecase version
+                    (1.1 #.(ascii-string-to-octets "HTTP/1.1"))
+                    (1.0 #.(ascii-string-to-octets "HTTP/1.0"))) stream)
   (write-sequence +crlf+ stream))
 
-(defun-careful request (uri &key (method :get) (protocol :http/1.1) socket
+(defun-careful request (uri &key (method :get) (version 1.1) socket
                             keep-alive)
   (let* ((uri (quri:uri uri))
          (socket (or socket
@@ -110,7 +112,7 @@
                                              :element-type '(unsigned-byte 8))))
          (stream (usocket:socket-stream socket)))
 
-    (write-first-line method uri protocol stream)
+    (write-first-line method uri version stream)
     (write-header stream :user-agent #.*default-user-agent*)
     (write-header stream :host (uri-host uri))
     (write-header stream :accept "*/*")
