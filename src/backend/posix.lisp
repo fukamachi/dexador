@@ -167,4 +167,5 @@
       (values (finish-output-buffer body)
               (http-status http)
               (http-headers http)
-              fd))))
+              (when keep-alive
+                fd)))))

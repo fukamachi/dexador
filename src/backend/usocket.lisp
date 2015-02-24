@@ -135,4 +135,5 @@
       (values (finish-output-buffer body)
               (http-status http)
               (http-headers http)
-              socket))))
+              (when keep-alive
+                socket)))))
