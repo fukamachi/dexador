@@ -84,7 +84,7 @@
   (write-sequence (ascii-string-to-octets (string method)) stream)
   (write-byte #.(char-code #\Space) stream)
   (write-sequence (ascii-string-to-octets (format nil "~A~:[~;~:*?~A~]"
-                                                  (uri-path uri)
+                                                  (or (uri-path uri) "/")
                                                   (uri-query uri)))
                   stream)
   (write-byte #.(char-code #\Space) stream)

@@ -67,7 +67,7 @@
   (fast-write-sequence (ascii-string-to-octets (string method)) buffer)
   (fast-write-byte #.(char-code #\Space) buffer)
   (fast-write-sequence (ascii-string-to-octets (format nil "~A~:[~;~:*?~A~]"
-                                                       (uri-path uri)
+                                                       (or (uri-path uri) "/")
                                                        (uri-query uri)))
                        buffer)
   (fast-write-byte #.(char-code #\Space) buffer)
