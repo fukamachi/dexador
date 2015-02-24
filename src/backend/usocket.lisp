@@ -60,21 +60,25 @@
   (with-fast-output (buf)
     (tagbody
      read-cr
-       (loop for byte of-type (unsigned-byte 8) = (read-byte stream nil nil)
-             when byte
-             do (fast-write-byte byte buf)
+       (loop for byte of-type (or (unsigned-byte 8) null) = (read-byte stream nil nil)
+             if byte
+               do (fast-write-byte byte buf)
+             else
+               do (go eof)
              until (= byte (char-code #\Return)))
 
      read-lf
        (let ((next-byte (read-byte stream nil nil)))
-         (declare (type (unsigned-byte 8) next-byte))
+         (declare (type (or (unsigned-byte 8) null) next-byte))
          (cond
-           ((null next-byte))
+           ((null next-byte)
+            (go eof))
            ((= next-byte (char-code #\Newline))
             (fast-write-byte next-byte buf))
            ((= next-byte (char-code #\Return))
             (fast-write-byte next-byte buf)
-            (go read-lf)))))))
+            (go read-lf))))
+     eof)))
 
 (defun write-first-line (method uri version stream)
   (write-sequence (ascii-string-to-octets (string method)) stream)
