@@ -3,12 +3,6 @@
   (:nicknames :dex.usocket)
   (:use :cl
         :dexador.util)
-  #+(or sbcl ccl cmu allegro)
-  (:import-from #+sbcl :sb-cltl2
-                #+ccl :ccl
-                #+cmu :ext
-                #+allegro :sys
-                :variable-information)
   (:import-from :usocket
                 :socket-connect
                 :socket-stream)
@@ -30,7 +24,8 @@
                 :uri-query
                 :url-encode-params)
   (:import-from :alexandria
-                :copy-stream)
+                :copy-stream
+                :if-let)
   (:export :request))
 (in-package :dexador.backend.usocket)
 
@@ -48,29 +43,17 @@
     (write-sequence +crlf+ stream)))
 
 #+(or sbcl ccl cmu allegro)
-(define-compiler-macro write-header (&environment env stream name value)
+(define-compiler-macro write-header (stream name value)
   `(progn
-     ,(if (or (and (constantp name)
-                   (typep name '(or symbol string)))
-              (and (symbolp name)
-                   (subtypep (assoc 'type (nth-value 2 (variable-information name env)))
-                             '(or symbol string))))
+     ,(if (and (constantp name)
+               (typep name '(or symbol string)))
           `(write-sequence ,(ascii-string-to-octets (string-capitalize name)) ,stream)
-          `(write-sequence (if (typep ,name '(or string symbol))
-                               (ascii-string-to-octets (string-capitalize ,name))
-                               ,name)
-                           ,stream))
+          `(write-sequence (ascii-string-to-octets (string-capitalize ,name)) ,stream))
      (write-sequence #.(ascii-string-to-octets ": ") ,stream)
-     ,(if (or (and (constantp value)
-                   (stringp value))
-              (and (symbolp value)
-                   (subtypep (assoc 'type (nth-value 2 (variable-information value env)))
-                             '(or symbol string))))
+     ,(if (and (constantp value)
+               (stringp value))
           `(write-sequence ,(ascii-string-to-octets (string value)) ,stream)
-          `(write-sequence (if (typep ,value '(or string symbol))
-                               (ascii-string-to-octets ,value)
-                               ,value)
-                           ,stream))
+          `(write-sequence (ascii-string-to-octets ,value) ,stream))
      (write-sequence +crlf+ ,stream)))
 
 (defun-speedy read-until-crlf (stream)
@@ -107,7 +90,7 @@
   (write-sequence +crlf+ stream))
 
 (defun-careful request (uri &key (method :get) (version 1.1)
-                            content
+                            content headers
                             keep-alive socket)
   (let* ((uri (quri:uri uri))
          (content (if (consp content)
@@ -119,23 +102,37 @@
                                              :element-type '(unsigned-byte 8))))
          (stream (usocket:socket-stream socket)))
 
-    (write-first-line method uri version stream)
-    (write-header stream :user-agent #.*default-user-agent*)
-    (write-header stream :host (uri-host uri))
-    (write-header stream :accept "*/*")
-    (when (= version 1.1)
-      (if keep-alive
-          (write-header stream :connection "keep-alive")
-          (write-header stream :connection "close")))
-    (etypecase content
-      (null)
-      (string
-       (write-header stream :content-type "application/x-www-form-urlencoded")
-       (write-header stream :content-length (princ-to-string (length content))))
-      (pathname
-       (write-header stream :content-type (mimes:mime content))
-       (with-open-file (in content)
-         (write-header stream :content-length (princ-to-string (file-length in))))))
+    (macrolet ((write-header* (name value)
+                 (let ((tmp (gensym)))
+                   `(if-let ((,tmp (assoc ,name headers :test #'eq)))
+                      (write-header stream ,name (princ-to-string (cdr ,tmp)))
+                      (write-header stream ,name ,value)))))
+      (write-first-line method uri version stream)
+      (write-header* :user-agent #.*default-user-agent*)
+      (write-header* :host (uri-host uri))
+      (write-header* :accept "*/*")
+      (when (and (= version 1.1)
+                 (not (assoc :connection headers :test #'eq)))
+        (if keep-alive
+            (write-header stream :connection "keep-alive")
+            (write-header stream :connection "close")))
+      (etypecase content
+        (null)
+        (string
+         (write-header* :content-type "application/x-www-form-urlencoded")
+         (write-header* :content-length (princ-to-string (length content))))
+        (pathname
+         (write-header* :content-type (mimes:mime content))
+         (if-let ((content-length (assoc :content-length headers :test #'eq)))
+           (write-header stream :content-length (princ-to-string (cdr content-length)))
+           (with-open-file (in content)
+             (write-header stream :content-length (princ-to-string (file-length in))))))))
+
+    ;; Custom headers
+    (loop for (name . value) in headers
+          unless (member name '(:user-agent :host :accept
+                                :content-type :content-length) :test #'eq)
+            do (write-header stream name value))
     (write-sequence +crlf+ stream)
     (force-output stream)
 
@@ -145,6 +142,8 @@
       (string (write-string content stream))
       (pathname (with-open-file (in content)
                   (copy-stream in stream))))
+    (force-output stream)
+
     (let* ((http (make-http-response))
            (body (make-output-buffer))
            (finishedp nil)

@@ -3,12 +3,6 @@
   (:nicknames :dex.posix)
   (:use :cl
         :dexador.util)
-  #+(or sbcl ccl cmu allegro)
-  (:import-from #+sbcl :sb-cltl2
-                #+ccl :ccl
-                #+cmu :ext
-                #+allegro :sys
-                :variable-information)
   (:import-from :wsock
                 :socket
                 :connect
@@ -57,6 +51,8 @@
   (:import-from :swap-bytes
                 :htonl
                 :htons)
+  (:import-from :alexandria
+                :if-let)
   (:export :request))
 (in-package :dexador.backend.posix)
 
@@ -95,30 +91,21 @@
   (fast-write-sequence +crlf+ buffer))
 
 #+(or sbcl ccl cmu allegro)
-(define-compiler-macro write-header (&environment env name value buffer)
+(define-compiler-macro write-header (name value buffer)
   `(progn
-     ,(if (or (and (constantp name)
-                   (typep name '(or symbol string)))
-              (and (symbolp name)
-                   (subtypep (assoc 'type (nth-value 2 (variable-information name env)))
-                             '(or symbol string))))
+     ,(if (and (constantp name)
+               (typep name '(or symbol string)))
           `(fast-write-sequence ,(ascii-string-to-octets (string-capitalize name)) ,buffer)
-          `(fast-write-sequence ,name ,buffer))
+          `(fast-write-sequence (ascii-string-to-octets (string-capitalize ,name)) ,buffer))
      (fast-write-sequence #.(ascii-string-to-octets ": ") ,buffer)
-     ,(if (or (and (constantp value)
-                   (stringp value))
-              (and (symbolp value)
-                   (subtypep (assoc 'type (nth-value 2 (variable-information value env)))
-                             '(or symbol string))))
+     ,(if (and (constantp value)
+               (typep value '(or string symbol)))
           `(fast-write-sequence ,(ascii-string-to-octets (string value)) ,buffer)
-          `(fast-write-sequence (if (typep ,value '(or string symbol))
-                                    (ascii-string-to-octets ,value)
-                                    ,value)
-                                ,buffer))
+          `(fast-write-sequence (ascii-string-to-octets (string ,value)) ,buffer))
      (fast-write-sequence +crlf+ ,buffer)))
 
 (defun-careful request (uri &key (method :get) (version 1.1)
-                            content
+                            content headers
                             keep-alive socket)
   (let ((uri (quri:uri uri))
         (content (if (consp content)
@@ -142,23 +129,37 @@
                  (quri:render-uri uri)
                  errno))))
     (let ((request-data (with-fast-output (buffer :static)
-                          (write-first-line method uri version buffer)
-                          (write-header :user-agent #.*default-user-agent* buffer)
-                          (write-header :host (uri-host uri) buffer)
-                          (write-header :accept "*/*" buffer)
-                          (when (= version 1.1)
-                            (if keep-alive
-                                (write-header :connection "keep-alive" buffer)
-                                (write-header :connection "close" buffer)))
-                          (etypecase content
-                            (null)
-                            (string
-                             (write-header :content-type "application/x-www-form-urlencoded" buffer)
-                             (write-header :content-length (princ-to-string (length content)) buffer))
-                            (pathname
-                             (write-header :content-type (mimes:mime content) buffer)
-                             (with-open-file (in content)
-                               (write-header :content-length (princ-to-string (file-length in)) buffer))))
+                          (macrolet ((write-header* (name value)
+                                       (let ((tmp (gensym)))
+                                         `(if-let ((,tmp (assoc ,name headers :test #'eq)))
+                                            (write-header ,name (princ-to-string (cdr ,tmp)) buffer)
+                                            (write-header ,name ,value buffer)))))
+                            (write-first-line method uri version buffer)
+                            (write-header* :user-agent #.*default-user-agent*)
+                            (write-header* :host (uri-host uri))
+                            (write-header* :accept "*/*")
+                            (when (and (= version 1.1)
+                                       (not (assoc :connection headers :test #'eq)))
+                              (if keep-alive
+                                  (write-header :connection "keep-alive" buffer)
+                                  (write-header :connection "close" buffer)))
+                            (etypecase content
+                              (null)
+                              (string
+                               (write-header* :content-type "application/x-www-form-urlencoded")
+                               (write-header* :content-length (princ-to-string (length content))))
+                              (pathname
+                               (write-header* :content-type (mimes:mime content))
+                               (if-let ((content-length (assoc :content-length headers :test #'eq)))
+                                 (write-header :content-length (princ-to-string (cdr content-length)) buffer)
+                                 (with-open-file (in content)
+                                   (write-header :content-length (princ-to-string (file-length in)) buffer))))))
+
+                          ;; Custom headers
+                          (loop for (name . value) in headers
+                                unless (member name '(:user-agent :host :accept
+                                                      :content-type :content-length) :test #'eq)
+                                  do (write-header name value buffer))
                           (fast-write-sequence +crlf+ buffer))))
       (unwind-protect
            (wsys:write fd (static-vector-pointer request-data) (length request-data))

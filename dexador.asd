@@ -22,7 +22,6 @@
                :fast-io
                :trivial-mimes
                :split-sequence
-               #+sbcl :sb-cltl2
                :alexandria
 
                #+(and unix (not clisp))
