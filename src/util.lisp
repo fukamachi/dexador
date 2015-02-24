@@ -38,9 +38,6 @@
 
 (deftype octets (&optional (len '*)) `(simple-array (unsigned-byte 8) (,len)))
 
-(declaim (type octets +crlf+))
-(defvar +crlf+ (ascii-string-to-octets (format nil "~C~C" #\Return #\Newline)))
-
 (declaim (ftype (function (simple-string) octets) ascii-string-to-octets))
 (eval-when (:compile-toplevel :load-toplevel :execute)
   (defun-speedy ascii-string-to-octets (string)
@@ -50,7 +47,6 @@
         (declare (type fixnum i))
         (setf (aref result i)
               (char-code (aref string i))))))
-
 
   (declaim (type octets +crlf+))
   (defvar +crlf+ (ascii-string-to-octets (format nil "~C~C" #\Return #\Newline))))

@@ -20,8 +20,8 @@
   (:import-from :wsys
                 :errno
                 :bzero
-                :read
-                :write)
+                #+nil :read
+                #+nil :write)
   (:import-from :cffi
                 :with-foreign-object
                 :with-foreign-slots
