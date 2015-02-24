@@ -20,6 +20,10 @@
                :fast-http
                :quri
                :fast-io
+               :wsock
+               :split-sequence
+               :swap-bytes
+               :static-vectors
                #+sbcl :sb-cltl2
                :alexandria)
   :components ((:module "src"
@@ -29,7 +33,8 @@
                  (:module "backend"
                   :depends-on ("util")
                   :components
-                  ((:file "usocket"))))))
+                  ((:file "usocket")
+                   (:file "posix"))))))
   :description ""
   :long-description
   #.(with-open-file (stream (merge-pathnames
