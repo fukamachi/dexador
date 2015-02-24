@@ -28,7 +28,7 @@
                 :uri-port
                 :uri-path
                 :uri-query)
-  (:export :http-request))
+  (:export :request))
 (in-package :dexador.backend.usocket)
 
 (defun write-header (stream name value)
@@ -101,8 +101,8 @@
   (write-sequence (ascii-string-to-octets (string protocol)) stream)
   (write-sequence +crlf+ stream))
 
-(defun-careful http-request (uri &key (method :get) (protocol :http/1.1) socket
-                                 keep-alive)
+(defun-careful request (uri &key (method :get) (protocol :http/1.1) socket
+                            keep-alive)
   (let* ((uri (quri:uri uri))
          (socket (or socket
                      (usocket:socket-connect (uri-host uri)

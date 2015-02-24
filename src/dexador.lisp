@@ -2,7 +2,11 @@
 (defpackage dexador
   (:nicknames :dex)
   (:use :cl)
+  #-(and unix (not clisp))
   (:import-from :dexador.backend.usocket
-                :http-request)
-  (:export :http-request))
+                :request)
+  #+(and unix (not clisp))
+  (:import-from :dexador.backend.posix
+                :request)
+  (:export :request))
 (in-package :dexador)

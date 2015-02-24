@@ -52,7 +52,7 @@
   (:import-from :swap-bytes
                 :htonl
                 :htons)
-  (:export :http-request))
+  (:export :request))
 (in-package :dexador.backend.posix)
 
 (defun vector-to-integer (vector)
@@ -110,8 +110,8 @@
                                 ,buffer))
      (fast-write-sequence +crlf+ ,buffer)))
 
-(defun-careful http-request (uri &key (method :get) (protocol :http/1.1) socket
-                                 keep-alive)
+(defun-careful request (uri &key (method :get) (protocol :http/1.1) socket
+                            keep-alive)
   (let ((uri (quri:uri uri))
         (fd (or socket
                 (wsock:socket wsock:+AF-INET+ wsock:+SOCK-STREAM+ 0))))
@@ -149,20 +149,20 @@
                                   (fast-write-sequence data body start end)))))
       (declare (type function parser))
       (unwind-protect
-        (loop
-          (let ((n (wsys:read fd (static-vector-pointer input-buffer) 1024)))
-            (declare (dynamic-extent n))
-            (case n
-              (-1
-               (error "Error while reading from ~D (Code=~A)"
-                      fd
-                      errno))
-              (0
-               (unless keep-alive
-                 (wsock:shutdown fd wsock:+SHUT-RDWR+))
-               (return))
-              (otherwise
-               (funcall parser input-buffer :end n)))))
+           (loop
+             (let ((n (wsys:read fd (static-vector-pointer input-buffer) 1024)))
+               (declare (dynamic-extent n))
+               (case n
+                 (-1
+                  (error "Error while reading from ~D (Code=~A)"
+                         fd
+                         errno))
+                 (0
+                  (unless keep-alive
+                    (wsock:shutdown fd wsock:+SHUT-RDWR+))
+                  (return))
+                 (otherwise
+                  (funcall parser input-buffer :end n)))))
         (free-static-vector input-buffer))
       (values (finish-output-buffer body)
               (http-status http)
