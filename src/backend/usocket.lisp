@@ -53,9 +53,35 @@
             (go read-lf))))
      eof)))
 
+(defun read-response (stream)
+  (let* ((http (make-http-response))
+         (body (make-output-buffer))
+         (finishedp nil)
+         (parser (make-parser http
+                              :body-callback
+                              (lambda (data start end)
+                                (fast-write-sequence data body start end))
+                              :finish-callback
+                              (lambda ()
+                                (setq finishedp t)))))
+    (loop for buf of-type octets  = (read-until-crlf stream)
+          do (funcall parser buf)
+          until (or finishedp
+                    (zerop (length buf))))
+    (values http (finish-output-buffer body))))
+
+(defun print-verbose-data (&rest data)
+  (format t "~&>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>~%")
+  (dolist (d data)
+    (map nil (lambda (byte)
+               (princ (code-char byte)))
+         d))
+  (format t "~&>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>~%"))
+
 (defun-careful request (uri &key (method :get) (version 1.1)
                             content headers
-                            (timeout *default-timeout*) keep-alive socket verbose)
+                            (timeout *default-timeout*) keep-alive
+                            socket verbose)
   (let* ((uri (quri:uri uri))
          (content (if (consp content)
                       (quri:url-encode-params content)
@@ -106,14 +132,7 @@
     (write-sequence headers-data stream)
     (force-output stream)
     (when verbose
-      (format t "~&>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>~%")
-      (map nil (lambda (byte)
-                 (princ (code-char byte)))
-           first-line-data)
-      (map nil (lambda (byte)
-                 (princ (code-char byte)))
-           headers-data)
-      (format t "~&>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>~%"))
+      (print-verbose-data first-line-data headers-data))
 
     ;; Sending the content
     (etypecase content
@@ -123,24 +142,44 @@
                   (copy-stream in stream))))
     (force-output stream)
 
-    (let* ((http (make-http-response))
-           (body (make-output-buffer))
-           (finishedp nil)
-           (parser (make-parser http
-                                :body-callback
-                                (lambda (data start end)
-                                  (fast-write-sequence data body start end))
-                                :finish-callback
-                                (lambda ()
-                                  (setq finishedp t)))))
-      (loop for buf of-type octets  = (read-until-crlf stream)
-            do (funcall parser buf)
-            until (or finishedp
-                      (zerop (length buf))))
-      (unless keep-alive
-        (usocket:socket-close socket))
-      (values (finish-output-buffer body)
-              (http-status http)
-              (http-headers http)
-              (when keep-alive
-                socket)))))
+    (tagbody
+     start-reading
+       (multiple-value-bind (http body)
+           (read-response stream)
+         (let ((status (http-status http))
+               (response-headers (http-headers http)))
+           (when (and (member status '(301 302 303 307) :test #'=)
+                      (member method '(:get :head) :test #'eq)
+                      (gethash "location" response-headers))
+             (let* ((location-uri (quri:uri (gethash "location" response-headers)))
+                    (next-first-line-data
+                      (with-fast-output (buffer)
+                        (write-first-line method location-uri version buffer))))
+               (if (string= (uri-host location-uri)
+                            (uri-host uri))
+                   (progn
+                     (when verbose
+                       (print-verbose-data next-first-line-data headers-data))
+                     (write-sequence next-first-line-data stream)
+                     (write-sequence headers-data stream)
+                     (force-output stream)
+                     (go start-reading))
+                   (progn
+                     (usocket:socket-close socket)
+                     (return-from request
+                       (request location-uri
+                                :method method
+                                :version version
+                                :content content
+                                :headers (nconc `((:host . ,(uri-host location-uri))) headers)
+                                :timeout timeout
+                                :keep-alive keep-alive
+                                :verbose verbose))))))
+           (unless keep-alive
+             (usocket:socket-close socket))
+           (return-from request
+             (values body
+                     status
+                     response-headers
+                     (when keep-alive
+                       socket))))))))
