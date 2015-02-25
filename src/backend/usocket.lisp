@@ -25,9 +25,7 @@
                 :url-encode-params)
   (:import-from :alexandria
                 :copy-stream
-                :if-let
-                :when-let
-                :once-only)
+                :if-let)
   (:export :request))
 (in-package :dexador.backend.usocket)
 
@@ -72,13 +70,12 @@
            (with-fast-output (buffer)
              (write-first-line method uri version buffer)))
          (headers-data
-           (macrolet ((write-header* (name value)
-                        (let ((tmp (gensym "TMP")))
-                          (once-only (name)
-                            `(if-let (,tmp (assoc ,name headers))
-                               (when-let (,tmp (cdr ,tmp))
-                                 (write-header ,name ,tmp))
-                               (write-header ,name ,value))))))
+           (flet ((write-header* (name value)
+                    (let ((header (assoc name headers)))
+                      (if header
+                          (when (cdr header)
+                            (write-header name (cdr header)))
+                          (write-header name value)))))
              (with-header-output (buffer)
                (write-header* :user-agent #.*default-user-agent*)
                (write-header* :host (uri-host uri))
