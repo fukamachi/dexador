@@ -119,11 +119,10 @@
         (write-header* :user-agent #.*default-user-agent*)
         (write-header* :host (uri-host uri))
         (write-header* :accept "*/*")
-        (when (and (= version 1.1)
+        (when (and keep-alive
+                   (= version 1.0)
                    (not (assoc :connection headers :test #'eq)))
-          (if keep-alive
-              (write-header stream :connection "keep-alive")
-              (write-header stream :connection "close")))
+          (write-header stream :connection "keep-alive"))
         (etypecase content
           (null)
           (string

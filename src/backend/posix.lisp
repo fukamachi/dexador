@@ -138,11 +138,10 @@
                             (write-header* :user-agent #.*default-user-agent*)
                             (write-header* :host (uri-host uri))
                             (write-header* :accept "*/*")
-                            (when (and (= version 1.1)
+                            (when (and keep-alive
+                                       (= version 1.0)
                                        (not (assoc :connection headers :test #'eq)))
-                              (if keep-alive
-                                  (write-header :connection "keep-alive" buffer)
-                                  (write-header :connection "close" buffer)))
+                              (write-header :connection "keep-alive" buffer))
                             (etypecase content
                               (null)
                               (string
