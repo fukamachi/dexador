@@ -21,15 +21,7 @@
                :quri
                :fast-io
                :trivial-mimes
-               :split-sequence
-               :alexandria
-
-               #+(and unix (not clisp))
-               :wsock
-               #+(and unix (not clisp))
-               :static-vectors
-               #+(and unix (not clisp))
-               :swap-bytes)
+               :alexandria)
   :components ((:module "src"
                 :components
                 ((:file "dexador" :depends-on ("backend"))
@@ -37,9 +29,7 @@
                  (:module "backend"
                   :depends-on ("util")
                   :components
-                  ((:file "usocket")
-                   #+(and unix (not clisp))
-                   (:file "posix"))))))
+                  ((:file "usocket"))))))
   :description ""
   :long-description
   #.(with-open-file (stream (merge-pathnames

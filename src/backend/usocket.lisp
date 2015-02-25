@@ -17,6 +17,8 @@
                 :with-fast-output
                 :fast-write-sequence
                 :fast-write-byte)
+  (:import-from :trivial-mimes
+                :mime)
   (:import-from :quri
                 :uri-host
                 :uri-port

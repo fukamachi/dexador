@@ -4,11 +4,7 @@
   (:use :cl)
   (:shadow :get
            :delete)
-  #-(and unix (not clisp))
   (:import-from :dexador.backend.usocket
-                :request)
-  #+(and unix (not clisp))
-  (:import-from :dexador.backend.posix
                 :request)
   (:export :request
            :get
