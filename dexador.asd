@@ -21,6 +21,7 @@
                :quri
                :fast-io
                :trivial-mimes
+               :chipz
                :alexandria)
   :components ((:module "src"
                 :components
