@@ -6,52 +6,61 @@
            :delete)
   (:import-from :dexador.backend.usocket
                 :request)
+  (:import-from :dexador.util
+                :*default-timeout*)
   (:export :request
            :get
            :post
            :head
            :put
-           :delete))
+           :delete
+           :*default-timeout*))
 (in-package :dexador)
 
-(defun get (uri &key verbose (version 1.1) headers keep-alive socket)
+(defun get (uri &key (version 1.1) headers keep-alive (timeout *default-timeout*) socket verbose)
   (request uri :method :get
-               :verbose verbose
                :version version
                :headers headers
+               :keep-alive keep-alive
+               :timeout timeout
                :socket socket
-               :keep-alive keep-alive))
+               :verbose verbose))
 
-(defun post (uri &key verbose (version 1.1) headers content keep-alive socket)
+(defun post (uri &key (version 1.1) headers content keep-alive (timeout *default-timeout*) socket verbose)
   (request uri :method :post
-               :verbose verbose
                :version version
                :headers headers
                :content content
+               :keep-alive keep-alive
+               :timeout timeout
                :socket socket
-               :keep-alive keep-alive))
+               :verbose verbose))
 
-(defun head (uri &key verbose (version 1.1) headers socket)
+(defun head (uri &key (version 1.1) headers (timeout *default-timeout*) socket verbose)
   (request uri :method :head
-               :verbose verbose
                :version version
                :headers headers
+               :keep-alive nil
+               :timeout timeout
                :socket socket
-               :keep-alive nil))
+               :verbose verbose))
 
-(defun put (uri &key verbose (version 1.1) headers content keep-alive socket)
+(defun put (uri &key (version 1.1) headers content keep-alive (timeout *default-timeout*) socket verbose)
   (request uri :method :put
-               :verbose verbose
                :version version
                :headers headers
                :content content
+               :keep-alive keep-alive
+               :timeout timeout
                :socket socket
-               :keep-alive keep-alive))
+               :verbose verbose))
 
-(defun delete (uri &key verbose (version 1.1) headers keep-alive socket)
+(defun delete (uri &key (version 1.1) headers keep-alive (timeout *default-timeout*) socket verbose)
   (request uri :method :delete
                :verbose verbose
                :version version
                :headers headers
+               :keep-alive keep-alive
+               :timeout timeout
                :socket socket
-               :keep-alive keep-alive))
+               :verbose verbose))

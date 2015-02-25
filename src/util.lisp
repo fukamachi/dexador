@@ -8,7 +8,8 @@
   (:import-from :quri
                 :uri-path
                 :uri-query)
-  (:export :defun-insane
+  (:export :*default-timeout*
+           :defun-insane
            :defun-speedy
            :defun-careful
            :octets
@@ -19,6 +20,8 @@
            :write-header
            :with-header-output))
 (in-package :dexador.util)
+
+(defvar *default-timeout* 10)
 
 (eval-when (:compile-toplevel :load-toplevel :execute)
   (defvar *insane-declaration* '(declare (optimize (speed 3) (safety 0) (space 0) (compilation-speed 0))))

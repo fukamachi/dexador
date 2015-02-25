@@ -55,9 +55,9 @@
             (go read-lf))))
      eof)))
 
-(defun-careful request (uri &key verbose (method :get) (version 1.1)
+(defun-careful request (uri &key (method :get) (version 1.1)
                             content headers
-                            keep-alive socket)
+                            (timeout *default-timeout*) keep-alive socket verbose)
   (let* ((uri (quri:uri uri))
          (content (if (consp content)
                       (quri:url-encode-params content)
@@ -65,6 +65,7 @@
          (socket (or socket
                      (usocket:socket-connect (uri-host uri)
                                              (uri-port uri)
+                                             :timeout timeout
                                              :element-type '(unsigned-byte 8))))
          (stream (usocket:socket-stream socket))
          (first-line-data
