@@ -51,21 +51,35 @@
             (fast-write-byte next-byte buf))
            ((= next-byte (char-code #\Return))
             (fast-write-byte next-byte buf)
-            (go read-lf))))
+            (go read-lf))
+           (T
+            (fast-write-byte next-byte buf)
+            (go read-cr))))
      eof)))
 
 (defun read-response (stream)
   (let* ((http (make-http-response))
          (body (make-output-buffer))
+         (header-finished-p nil)
          (finishedp nil)
+         (content-length nil)
          (parser (make-parser http
+                              :header-callback
+                              (lambda (headers)
+                                (setf header-finished-p t
+                                      content-length (gethash "content-length" headers)))
                               :body-callback
                               (lambda (data start end)
                                 (fast-write-sequence data body start end))
                               :finish-callback
                               (lambda ()
                                 (setq finishedp t)))))
-    (loop for buf of-type octets  = (read-until-crlf stream)
+    (loop for buf of-type octets = (if (and header-finished-p
+                                            content-length)
+                                       (let ((buf (make-array content-length :element-type '(unsigned-byte 8))))
+                                         (read-sequence buf stream)
+                                         buf)
+                                       (read-until-crlf stream))
           do (funcall parser buf)
           until (or finishedp
                     (zerop (length buf))))
