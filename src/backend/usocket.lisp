@@ -81,6 +81,7 @@
 (defun-careful request (uri &key (method :get) (version 1.1)
                             content headers
                             (timeout *default-timeout*) keep-alive
+                            (max-redirects 5)
                             socket verbose)
   (let* ((uri (quri:uri uri))
          (content (if (consp content)
@@ -163,6 +164,9 @@
                      (write-sequence next-first-line-data stream)
                      (write-sequence headers-data stream)
                      (force-output stream)
+                     (decf max-redirects)
+                     (when (= 0 max-redirects)
+                       (error "Request exceeded the limit of redirects"))
                      (go start-reading))
                    (progn
                      (usocket:socket-close socket)
@@ -174,6 +178,7 @@
                                 :headers (nconc `((:host . ,(uri-host location-uri))) headers)
                                 :timeout timeout
                                 :keep-alive keep-alive
+                                :max-redirects (1- max-redirects)
                                 :verbose verbose))))))
            (unless keep-alive
              (usocket:socket-close socket))

@@ -17,12 +17,13 @@
            :*default-timeout*))
 (in-package :dexador)
 
-(defun get (uri &key (version 1.1) headers keep-alive (timeout *default-timeout*) socket verbose)
+(defun get (uri &key (version 1.1) headers keep-alive (timeout *default-timeout*) (max-redirects 5) socket verbose)
   (request uri :method :get
                :version version
                :headers headers
                :keep-alive keep-alive
                :timeout timeout
+               :max-redirects max-redirects
                :socket socket
                :verbose verbose))
 
@@ -36,12 +37,13 @@
                :socket socket
                :verbose verbose))
 
-(defun head (uri &key (version 1.1) headers (timeout *default-timeout*) socket verbose)
+(defun head (uri &key (version 1.1) headers (timeout *default-timeout*) (max-redirects 5) socket verbose)
   (request uri :method :head
                :version version
                :headers headers
                :keep-alive nil
                :timeout timeout
+               :max-redirects max-redirects
                :socket socket
                :verbose verbose))
 
