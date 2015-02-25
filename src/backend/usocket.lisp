@@ -20,6 +20,7 @@
   (:import-from :trivial-mimes
                 :mime)
   (:import-from :quri
+                :uri-p
                 :uri-host
                 :uri-port
                 :url-encode-params)
@@ -83,7 +84,9 @@
                             (timeout *default-timeout*) keep-alive
                             (max-redirects 5)
                             socket verbose)
-  (let* ((uri (quri:uri uri))
+  (let* ((uri (if (quri:uri-p uri)
+                  uri
+                  (quri:uri uri)))
          (content (if (consp content)
                       (quri:url-encode-params content)
                       content))
