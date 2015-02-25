@@ -24,6 +24,9 @@
                 :uri-host
                 :uri-port
                 :url-encode-params)
+  (:import-from :chipz
+                :decompress
+                :make-dstate)
   (:import-from :alexandria
                 :copy-stream
                 :if-let)
@@ -92,6 +95,17 @@
                (princ (code-char byte)))
          d))
   (format t "~&>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>~%"))
+
+(defun decompress-body (content-encoding body)
+  (unless content-encoding
+    (return-from decompress-body body))
+
+  (cond
+    ((string= content-encoding "gzip")
+     (chipz:decompress nil (chipz:make-dstate :gzip) body))
+    ((string= content-encoding "deflate")
+     (chipz:decompress nil (chipz:make-dstate :deflate) body))
+    (T body)))
 
 (defun-careful request (uri &key (method :get) (version 1.1)
                             content headers
@@ -200,7 +214,7 @@
            (unless keep-alive
              (usocket:socket-close socket))
            (return-from request
-             (values body
+             (values (decompress-body (gethash "content-encoding" response-headers) body)
                      status
                      response-headers
                      (when keep-alive
