@@ -20,41 +20,14 @@
   (:import-from :quri
                 :uri-host
                 :uri-port
-                :uri-path
-                :uri-query
                 :url-encode-params)
   (:import-from :alexandria
                 :copy-stream
-                :if-let)
+                :if-let
+                :when-let
+                :once-only)
   (:export :request))
 (in-package :dexador.backend.usocket)
-
-(defun write-header (stream name value)
-  (flet ((write-ascii-string (string stream)
-           (loop for char of-type character across string
-                 do (write-byte (char-code char) stream))))
-    (if (typep name 'octets)
-        (write-sequence name stream)
-        (write-ascii-string (string-capitalize name) stream))
-    (write-sequence #.(ascii-string-to-octets ": ") stream)
-    (if (typep value 'octets)
-        (write-sequence value stream)
-        (write-ascii-string value stream))
-    (write-sequence +crlf+ stream)))
-
-#+(or sbcl ccl cmu allegro)
-(define-compiler-macro write-header (stream name value)
-  `(progn
-     ,(if (and (constantp name)
-               (typep name '(or symbol string)))
-          `(write-sequence ,(ascii-string-to-octets (string-capitalize name)) ,stream)
-          `(write-sequence (ascii-string-to-octets (string-capitalize ,name)) ,stream))
-     (write-sequence #.(ascii-string-to-octets ": ") ,stream)
-     ,(if (and (constantp value)
-               (stringp value))
-          `(write-sequence ,(ascii-string-to-octets (string value)) ,stream)
-          `(write-sequence (ascii-string-to-octets ,value) ,stream))
-     (write-sequence +crlf+ ,stream)))
 
 (defun-speedy read-until-crlf (stream)
   (with-fast-output (buf)
@@ -80,24 +53,10 @@
             (go read-lf))))
      eof)))
 
-(defun write-first-line (method uri version stream)
-  (write-sequence (ascii-string-to-octets (string method)) stream)
-  (write-byte #.(char-code #\Space) stream)
-  (write-sequence (ascii-string-to-octets (format nil "~A~:[~;~:*?~A~]"
-                                                  (or (uri-path uri) "/")
-                                                  (uri-query uri)))
-                  stream)
-  (write-byte #.(char-code #\Space) stream)
-  (write-sequence (ecase version
-                    (1.1 #.(ascii-string-to-octets "HTTP/1.1"))
-                    (1.0 #.(ascii-string-to-octets "HTTP/1.0"))) stream)
-  (write-sequence +crlf+ stream))
-
 (defun-careful request (uri &key verbose (method :get) (version 1.1)
                             content headers
                             keep-alive socket)
   (let* ((uri (quri:uri uri))
-         (verbose-stream (when verbose (flex:make-in-memory-output-stream)))
          (content (if (consp content)
                       (quri:url-encode-params content)
                       content))
@@ -105,49 +64,56 @@
                      (usocket:socket-connect (uri-host uri)
                                              (uri-port uri)
                                              :element-type '(unsigned-byte 8))))
-         (stream (usocket:socket-stream socket)))
+         (stream (usocket:socket-stream socket))
+         (first-line-data
+           (with-fast-output (buffer)
+             (write-first-line method uri version buffer)))
+         (headers-data
+           (macrolet ((write-header* (name value)
+                        (let ((tmp (gensym "TMP")))
+                          (once-only (name)
+                            `(if-let (,tmp (assoc ,name headers))
+                               (when-let (,tmp (cdr ,tmp))
+                                 (write-header ,name ,tmp))
+                               (write-header ,name ,value))))))
+             (with-header-output (buffer)
+               (write-header* :user-agent #.*default-user-agent*)
+               (write-header* :host (uri-host uri))
+               (write-header* :accept "*/*")
+               (when (and keep-alive
+                          (= version 1.0))
+                 (write-header* :connection "keep-alive"))
+               (etypecase content
+                 (null)
+                 (string
+                  (write-header* :content-type "application/x-www-form-urlencoded")
+                  (write-header* :content-length (length content)))
+                 (pathname
+                  (write-header* :content-type (mimes:mime content))
+                  (if-let ((content-length (assoc :content-length headers :test #'eq)))
+                    (write-header :content-length (cdr content-length))
+                    (with-open-file (in content)
+                      (write-header :content-length (file-length in))))))
 
-    (let ((stream (if verbose
-                      (make-broadcast-stream verbose-stream stream)
-                      stream)))
-      (macrolet ((write-header* (name value)
-                   (let ((tmp (gensym)))
-                     `(if-let ((,tmp (assoc ,name headers :test #'eq)))
-                        (write-header stream ,name (princ-to-string (cdr ,tmp)))
-                        (write-header stream ,name ,value)))))
-        (write-first-line method uri version stream)
-        (write-header* :user-agent #.*default-user-agent*)
-        (write-header* :host (uri-host uri))
-        (write-header* :accept "*/*")
-        (when (and keep-alive
-                   (= version 1.0)
-                   (not (assoc :connection headers :test #'eq)))
-          (write-header stream :connection "keep-alive"))
-        (etypecase content
-          (null)
-          (string
-           (write-header* :content-type "application/x-www-form-urlencoded")
-           (write-header* :content-length (princ-to-string (length content))))
-          (pathname
-           (write-header* :content-type (mimes:mime content))
-           (if-let ((content-length (assoc :content-length headers :test #'eq)))
-             (write-header stream :content-length (princ-to-string (cdr content-length)))
-             (with-open-file (in content)
-               (write-header stream :content-length (princ-to-string (file-length in))))))))
-
-      ;; Custom headers
-      (loop for (name . value) in headers
-            unless (member name '(:user-agent :host :accept
-                                  :content-type :content-length) :test #'eq)
-              do (write-header stream name value))
-      (write-sequence +crlf+ stream)
-      (force-output stream)
-      (when verbose
-        (format t "~&>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>~%")
-        (map nil (lambda (byte)
-                   (princ (code-char byte)))
-             (flex:get-output-stream-sequence verbose-stream))
-        (format t "~&>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>~%")))
+               ;; Custom headers
+               (loop for (name . value) in headers
+                     unless (member name '(:user-agent :host :accept
+                                           :connection
+                                           :content-type :content-length) :test #'eq)
+                       do (write-header name value))
+               (fast-write-sequence +crlf+ buffer)))))
+    (write-sequence first-line-data stream)
+    (write-sequence headers-data stream)
+    (force-output stream)
+    (when verbose
+      (format t "~&>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>~%")
+      (map nil (lambda (byte)
+                 (princ (code-char byte)))
+           first-line-data)
+      (map nil (lambda (byte)
+                 (princ (code-char byte)))
+           headers-data)
+      (format t "~&>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>~%"))
 
     ;; Sending the content
     (etypecase content

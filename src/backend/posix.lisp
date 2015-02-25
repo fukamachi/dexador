@@ -63,47 +63,6 @@
      (ash (aref vector 2) 8)
      (aref vector 3)))
 
-(defun write-first-line (method uri version buffer)
-  (fast-write-sequence (ascii-string-to-octets (string method)) buffer)
-  (fast-write-byte #.(char-code #\Space) buffer)
-  (fast-write-sequence (ascii-string-to-octets (format nil "~A~:[~;~:*?~A~]"
-                                                       (or (uri-path uri) "/")
-                                                       (uri-query uri)))
-                       buffer)
-  (fast-write-byte #.(char-code #\Space) buffer)
-  (fast-write-sequence (ecase version
-                         (1.1 #.(ascii-string-to-octets "HTTP/1.1"))
-                         (1.0 #.(ascii-string-to-octets "HTTP/1.0"))) buffer)
-  (fast-write-sequence +crlf+ buffer))
-
-(defun-speedy write-ascii-string (string buffer)
-  (loop for char of-type character across string
-        do (fast-write-byte (char-code char) buffer)))
-
-(defun write-header (name value buffer)
-  (if (typep name 'octets)
-      (fast-write-sequence name buffer)
-      (write-ascii-string (string-capitalize name) buffer))
-  (fast-write-sequence #.(ascii-string-to-octets ": ") buffer)
-  (if (typep value 'octets)
-      (fast-write-sequence value buffer)
-      (write-ascii-string value buffer))
-  (fast-write-sequence +crlf+ buffer))
-
-#+(or sbcl ccl cmu allegro)
-(define-compiler-macro write-header (name value buffer)
-  `(progn
-     ,(if (and (constantp name)
-               (typep name '(or symbol string)))
-          `(fast-write-sequence ,(ascii-string-to-octets (string-capitalize name)) ,buffer)
-          `(fast-write-sequence (ascii-string-to-octets (string-capitalize ,name)) ,buffer))
-     (fast-write-sequence #.(ascii-string-to-octets ": ") ,buffer)
-     ,(if (and (constantp value)
-               (typep value '(or string symbol)))
-          `(fast-write-sequence ,(ascii-string-to-octets (string value)) ,buffer)
-          `(fast-write-sequence (ascii-string-to-octets (string ,value)) ,buffer))
-     (fast-write-sequence +crlf+ ,buffer)))
-
 (defun-careful request (uri &key verbose (method :get) (version 1.1)
                             content headers
                             keep-alive socket)
@@ -128,47 +87,49 @@
           (error "Cannot connect to ~S (Code=~A)"
                  (quri:render-uri uri)
                  errno))))
-    (let ((request-data (with-fast-output (buffer :static)
-                          (macrolet ((write-header* (name value)
-                                       (let ((tmp (gensym)))
-                                         `(if-let ((,tmp (assoc ,name headers :test #'eq)))
-                                            (write-header ,name (princ-to-string (cdr ,tmp)) buffer)
-                                            (write-header ,name ,value buffer)))))
-                            (write-first-line method uri version buffer)
-                            (write-header* :user-agent #.*default-user-agent*)
-                            (write-header* :host (uri-host uri))
-                            (write-header* :accept "*/*")
-                            (when (and keep-alive
-                                       (= version 1.0)
-                                       (not (assoc :connection headers :test #'eq)))
-                              (write-header :connection "keep-alive" buffer))
-                            (etypecase content
-                              (null)
-                              (string
-                               (write-header* :content-type "application/x-www-form-urlencoded")
-                               (write-header* :content-length (princ-to-string (length content))))
-                              (pathname
-                               (write-header* :content-type (mimes:mime content))
-                               (if-let ((content-length (assoc :content-length headers :test #'eq)))
-                                 (write-header :content-length (princ-to-string (cdr content-length)) buffer)
-                                 (with-open-file (in content)
-                                   (write-header :content-length (princ-to-string (file-length in)) buffer))))))
+    (let ((first-line-data (with-fast-output (buffer :static)
+                             (write-first-line method uri version buffer)))
+          (headers-data (with-header-output (buffer :static)
+                          (write-header :user-agent #.*default-user-agent*)
+                          (write-header :host (uri-host uri))
+                          (write-header :accept "*/*")
+                          (when (and keep-alive
+                                     (= version 1.0)
+                                     (not (assoc :connection headers :test #'eq)))
+                            (write-header :connection "keep-alive"))
+                          (etypecase content
+                            (null)
+                            (string
+                             (write-header :content-type "application/x-www-form-urlencoded")
+                             (write-header :content-length (length content)))
+                            (pathname
+                             (write-header :content-type (mimes:mime content))
+                             (if-let ((content-length (assoc :content-length headers :test #'eq)))
+                               (write-header :content-length (cdr content-length))
+                               (with-open-file (in content)
+                                 (write-header :content-length (file-length in))))))
 
                           ;; Custom headers
                           (loop for (name . value) in headers
                                 unless (member name '(:user-agent :host :accept
                                                       :content-type :content-length) :test #'eq)
-                                  do (write-header name value buffer))
+                                  do (write-header name value))
                           (fast-write-sequence +crlf+ buffer))))
       (unwind-protect
            (progn
              (when verbose
                (format t "~&>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>~%")
                (map nil (lambda (byte)
-                          (princ (code-char byte))) request-data)
+                          (princ (code-char byte)))
+                    first-line-data)
+               (map nil (lambda (byte)
+                          (princ (code-char byte)))
+                    headers-data)
                (format t "~&>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>~%"))
-             (wsys:write fd (static-vector-pointer request-data) (length request-data)))
-        (free-static-vector request-data)))
+             (wsys:write fd (static-vector-pointer first-line-data) (length first-line-data))
+             (wsys:write fd (static-vector-pointer headers-data) (length headers-data)))
+        (free-static-vector first-line-data)
+        (free-static-vector headers-data)))
 
     ;; Sending the content
     (etypecase content

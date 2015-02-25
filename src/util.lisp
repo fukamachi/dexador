@@ -1,13 +1,23 @@
 (in-package :cl-user)
 (defpackage dexador.util
   (:use :cl)
+  (:import-from :fast-io
+                :with-fast-output
+                :fast-write-byte
+                :fast-write-sequence)
+  (:import-from :quri
+                :uri-path
+                :uri-query)
   (:export :defun-insane
            :defun-speedy
            :defun-careful
            :octets
            :ascii-string-to-octets
            :+crlf+
-           :*default-user-agent*))
+           :*default-user-agent*
+           :write-first-line
+           :write-header
+           :with-header-output))
 (in-package :dexador.util)
 
 (eval-when (:compile-toplevel :load-toplevel :execute)
@@ -64,3 +74,55 @@
                 #+(or win32 mswindows) "Windows"
                 #-(or win32 mswindows) "Unix")
             (or #-clisp (software-version)))))
+
+(defparameter *header-buffer* nil)
+
+(defun write-first-line (method uri version &optional (buffer *header-buffer*))
+  (fast-write-sequence (ascii-string-to-octets (string method)) buffer)
+  (fast-write-byte #.(char-code #\Space) buffer)
+  (fast-write-sequence (ascii-string-to-octets (format nil "~A~:[~;~:*?~A~]"
+                                                       (or (uri-path uri) "/")
+                                                       (uri-query uri)))
+                       buffer)
+  (fast-write-byte #.(char-code #\Space) buffer)
+  (fast-write-sequence (ecase version
+                         (1.1 #.(ascii-string-to-octets "HTTP/1.1"))
+                         (1.0 #.(ascii-string-to-octets "HTTP/1.0")))
+                       buffer)
+  (fast-write-sequence +crlf+ buffer))
+
+(defun write-header-field (name buffer)
+  (fast-write-sequence (if (typep name 'octets)
+                           name
+                           (ascii-string-to-octets (string-capitalize name)))
+                       buffer))
+
+(defun write-header-value (value buffer)
+  (fast-write-sequence (if (typep value 'octets)
+                           value
+                           (ascii-string-to-octets (princ-to-string value)))
+                       buffer))
+
+(defun write-header (name value &optional (buffer *header-buffer*))
+  (write-header-field name buffer)
+  (fast-write-sequence #.(ascii-string-to-octets ": ") buffer)
+  (write-header-value value buffer)
+  (fast-write-sequence +crlf+ buffer))
+
+(define-compiler-macro write-header (name value &optional (buffer '*header-buffer*))
+  `(progn
+     ,(if (and (constantp name)
+               (typep name '(or keyword string)))
+          `(fast-write-sequence ,(ascii-string-to-octets (string-capitalize name)) ,buffer)
+          `(write-header-field ,name ,buffer))
+     (fast-write-sequence ,(ascii-string-to-octets ": ") ,buffer)
+     ,(if (constantp value)
+          `(fast-write-sequence ,(ascii-string-to-octets (string value)) ,buffer)
+          `(write-header-value ,value ,buffer))
+     (fast-write-sequence +crlf+ ,buffer)))
+
+(defmacro with-header-output ((buffer &optional output) &body body)
+  `(with-fast-output (,buffer ,output)
+     (declare (ignorable ,buffer))
+     (let ((*header-buffer* ,buffer))
+       ,@body)))
