@@ -12,7 +12,9 @@
   :author "Eitaro Fukamachi"
   :license "MIT"
   :depends-on (:dexador
-               :prove)
+               :prove
+               :clack-test
+               :babel)
   :components ((:module "t"
                 :components
                 ((:test-file "dexador"))))

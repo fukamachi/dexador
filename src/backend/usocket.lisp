@@ -191,18 +191,20 @@
                     (next-first-line-data
                       (with-fast-output (buffer)
                         (write-first-line method location-uri version buffer))))
-               (if (string= (uri-host location-uri)
-                            (uri-host uri))
+               (if (or (null (uri-host location-uri))
+                       (and (string= (uri-host location-uri)
+                                     (uri-host uri))
+                            (eql (uri-port location-uri)
+                                 (uri-port uri))))
                    (progn
-                     (when verbose
-                       (print-verbose-data next-first-line-data headers-data))
-                     (write-sequence next-first-line-data stream)
-                     (write-sequence headers-data stream)
-                     (force-output stream)
-                     (decf max-redirects)
-                     (when (= 0 max-redirects)
-                       (error "Request exceeded the limit of redirects"))
-                     (go start-reading))
+                     (unless (= 0 max-redirects)
+                       (when verbose
+                         (print-verbose-data next-first-line-data headers-data))
+                       (write-sequence next-first-line-data stream)
+                       (write-sequence headers-data stream)
+                       (force-output stream)
+                       (decf max-redirects)
+                       (go start-reading)))
                    (progn
                      (usocket:socket-close socket)
                      (return-from request
