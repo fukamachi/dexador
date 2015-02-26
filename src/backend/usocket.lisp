@@ -60,7 +60,7 @@
             (go read-cr))))
      eof)))
 
-(defun read-response (stream)
+(defun read-response (stream has-body)
   (let* ((http (make-http-response))
          (body (make-output-buffer))
          (header-finished-p nil)
@@ -69,8 +69,12 @@
          (parser (make-parser http
                               :header-callback
                               (lambda (headers)
-                                (setf header-finished-p t
-                                      content-length (gethash "content-length" headers)))
+                                (setq header-finished-p t
+                                      content-length (gethash "content-length" headers))
+                                (unless (and has-body
+                                             (or content-length
+                                                 (gethash "transfer-encoding" headers)))
+                                  (setq finishedp t)))
                               :body-callback
                               (lambda (data start end)
                                 (fast-write-sequence data body start end))
@@ -177,7 +181,7 @@
     (tagbody
      start-reading
        (multiple-value-bind (http body)
-           (read-response stream)
+           (read-response stream (not (eq method :head)))
          (let ((status (http-status http))
                (response-headers (http-headers http)))
            (when (and (member status '(301 302 303 307) :test #'=)
