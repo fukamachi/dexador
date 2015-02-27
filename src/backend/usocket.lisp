@@ -23,10 +23,13 @@
                 :uri-p
                 :uri-host
                 :uri-port
+                :uri-scheme
                 :url-encode-params)
   (:import-from :chipz
                 :decompress
                 :make-dstate)
+  (:import-from :cl+ssl
+                :make-ssl-client-stream)
   (:import-from :alexandria
                 :copy-stream
                 :if-let)
@@ -115,7 +118,9 @@
                             content headers
                             (timeout *default-timeout*) keep-alive
                             (max-redirects 5)
+                            ssl-key-file ssl-cert-file ssl-key-password
                             socket verbose)
+  (declare (ignorable ssl-key-file ssl-cert-file ssl-key-password))
   (let* ((uri (if (quri:uri-p uri)
                   uri
                   (quri:uri uri)))
@@ -128,6 +133,15 @@
                                              :timeout timeout
                                              :element-type '(unsigned-byte 8))))
          (stream (usocket:socket-stream socket))
+         (stream (if (string= (uri-scheme uri) "https")
+                     #+dexador-no-ssl
+                     (error "SSL not supported. Remove :dexador-no-ssl from *features* to enable SSL.")
+                     #-dexador-no-ssl
+                     (cl+ssl:make-ssl-client-stream stream
+                                                    :certificate ssl-cert-file
+                                                    :key ssl-key-file
+                                                    :password ssl-key-password)
+                     stream))
          (first-line-data
            (with-fast-output (buffer)
              (write-first-line method uri version buffer)))

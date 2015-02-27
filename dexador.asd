@@ -22,6 +22,7 @@
                :fast-io
                :trivial-mimes
                :chipz
+               #-dexador-no-ssl :cl+ssl
                :alexandria)
   :components ((:module "src"
                 :components
