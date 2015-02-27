@@ -17,52 +17,32 @@
            :*default-timeout*))
 (in-package :dexador)
 
-(defun get (uri &key (version 1.1) headers keep-alive (timeout *default-timeout*) (max-redirects 5) socket verbose)
-  (request uri :method :get
-               :version version
-               :headers headers
-               :keep-alive keep-alive
-               :timeout timeout
-               :max-redirects max-redirects
-               :socket socket
-               :verbose verbose))
+(defun get (uri &rest args
+            &key version headers keep-alive timeout max-redirects
+              ssl-key-file ssl-cert-file ssl-key-password socket verbose)
+  (declare (ignore version headers keep-alive timeout max-redirects ssl-key-file ssl-cert-file ssl-key-password socket verbose))
+  (apply #'request uri :method :get args))
 
-(defun post (uri &key (version 1.1) headers content keep-alive (timeout *default-timeout*) socket verbose)
-  (request uri :method :post
-               :version version
-               :headers headers
-               :content content
-               :keep-alive keep-alive
-               :timeout timeout
-               :socket socket
-               :verbose verbose))
+(defun post (uri &rest args
+             &key version headers content keep-alive timeout
+               ssl-key-file ssl-cert-file ssl-key-password socket verbose)
+  (declare (ignore version headers content keep-alive timeout ssl-key-file ssl-cert-file ssl-key-password socket verbose))
+  (apply #'request uri :method :post args))
 
-(defun head (uri &key (version 1.1) headers (timeout *default-timeout*) (max-redirects 5) socket verbose)
-  (request uri :method :head
-               :version version
-               :headers headers
-               :keep-alive nil
-               :timeout timeout
-               :max-redirects max-redirects
-               :socket socket
-               :verbose verbose))
+(defun head (uri &rest args
+             &key version headers timeout max-redirects
+               ssl-key-file ssl-cert-file ssl-key-password socket verbose)
+  (declare (ignore version headers timeout max-redirects ssl-key-file ssl-cert-file ssl-key-password socket verbose))
+  (apply #'request uri :method :head args))
 
-(defun put (uri &key (version 1.1) headers content keep-alive (timeout *default-timeout*) socket verbose)
-  (request uri :method :put
-               :version version
-               :headers headers
-               :content content
-               :keep-alive keep-alive
-               :timeout timeout
-               :socket socket
-               :verbose verbose))
+(defun put (uri &rest args
+            &key version headers content keep-alive timeout
+              ssl-key-file ssl-cert-file ssl-key-password socket verbose)
+  (declare (ignore version headers content keep-alive timeout ssl-key-file ssl-cert-file ssl-key-password socket verbose))
+  (apply #'request uri :method :put args))
 
-(defun delete (uri &key (version 1.1) headers keep-alive (timeout *default-timeout*) socket verbose)
-  (request uri :method :delete
-               :verbose verbose
-               :version version
-               :headers headers
-               :keep-alive keep-alive
-               :timeout timeout
-               :socket socket
-               :verbose verbose))
+(defun delete (uri &rest args
+               &key version headers keep-alive timeout
+                 ssl-key-file ssl-cert-file ssl-key-password socket verbose)
+  (declare (ignore version headers keep-alive timeout ssl-key-file ssl-cert-file ssl-key-password socket verbose))
+  (apply #'request uri :method :delete args))
