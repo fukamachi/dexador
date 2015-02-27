@@ -133,7 +133,7 @@
              (write-first-line method uri version buffer)))
          (headers-data
            (flet ((write-header* (name value)
-                    (let ((header (assoc name headers)))
+                    (let ((header (assoc name headers :test #'string-equal)))
                       (if header
                           (when (cdr header)
                             (write-header name (cdr header)))
@@ -152,7 +152,7 @@
                   (write-header* :content-length (length content)))
                  (pathname
                   (write-header* :content-type (mimes:mime content))
-                  (if-let ((content-length (assoc :content-length headers :test #'eq)))
+                  (if-let ((content-length (assoc :content-length headers :test #'string-equal)))
                     (write-header :content-length (cdr content-length))
                     (with-open-file (in content)
                       (write-header :content-length (file-length in))))))
@@ -161,7 +161,7 @@
                (loop for (name . value) in headers
                      unless (member name '(:user-agent :host :accept
                                            :connection
-                                           :content-type :content-length) :test #'eq)
+                                           :content-type :content-length) :test #'string-equal)
                        do (write-header name value))
                (fast-write-sequence +crlf+ buffer)))))
     (write-sequence first-line-data stream)
