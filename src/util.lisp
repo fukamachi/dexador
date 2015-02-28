@@ -18,7 +18,8 @@
            :*default-user-agent*
            :write-first-line
            :write-header
-           :with-header-output))
+           :with-header-output
+           :make-random-string))
 (in-package :dexador.util)
 
 (defvar *default-timeout* 10)
@@ -129,3 +130,14 @@
      (declare (ignorable ,buffer))
      (let ((*header-buffer* ,buffer))
        ,@body)))
+
+(defun-speedy make-random-string (&optional (length 12))
+  (declare (type fixnum length))
+  (let ((result (make-string length)))
+    (declare (type simple-string result))
+    (dotimes (i length result)
+      (setf (aref result i)
+            (ecase (random 5)
+              ((0 1) (code-char (+ #.(char-code #\a) (random 26))))
+              ((2 3) (code-char (+ #.(char-code #\A) (random 26))))
+              ((4) (code-char (+ #.(char-code #\0) (random 10)))))))))

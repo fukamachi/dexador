@@ -20,6 +20,7 @@
                :fast-http
                :quri
                :fast-io
+               :babel
                :trivial-mimes
                :chipz
                #-dexador-no-ssl :cl+ssl

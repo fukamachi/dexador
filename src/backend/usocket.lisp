@@ -114,6 +114,63 @@
      (chipz:decompress nil (chipz:make-dstate :deflate) body))
     (T body)))
 
+(defun content-disposition (key val)
+  (format nil "Content-Disposition: form-data; name=\"~A\"~:[~;~:*; filename=\"~A\"~]~C~C"
+          key
+          (and (pathnamep val)
+               (file-namestring val))
+          #\Return #\Newline))
+
+(defun-speedy multipart-content-length (content boundary)
+  (declare (type simple-string boundary))
+  (let ((boundary-length (length boundary)))
+    (+ (loop for (key . val) in content
+             sum (+ 2 boundary-length 2
+                    (length (the simple-string (content-disposition key val)))
+                    (if (pathnamep val)
+                        (+ #.(length "Content-Type: ") (length (the simple-string (mimes:mime val))) 2)
+                        0)
+                    2
+                    (typecase val
+                      (pathname (with-open-file (in val)
+                                  (file-length in)))
+                      (string (length val))
+                      (otherwise (length (princ-to-string val))))
+                    2))
+       2 boundary-length 2 2)))
+
+(defun write-multipart-content (content boundary stream)
+  (let ((boundary (ascii-string-to-octets boundary)))
+    (labels ((boundary-line (&optional endp)
+               (write-sequence #.(ascii-string-to-octets "--") stream)
+               (write-sequence boundary stream)
+               (when endp
+                 (write-sequence #.(ascii-string-to-octets "--") stream))
+               (crlf))
+             (crlf () (write-sequence +crlf+ stream)))
+      (loop for (key . val) in content
+            do (boundary-line)
+               (write-sequence (ascii-string-to-octets (content-disposition key val)) stream)
+               (when (pathnamep val)
+                 (write-sequence
+                  (ascii-string-to-octets
+                   (format nil "Content-Type: ~A~C~C"
+                           (mimes:mime val)
+                           #\Return #\Newline))
+                  stream))
+               (crlf)
+               (typecase val
+                 (pathname (let ((buf (make-array 1024 :element-type '(unsigned-byte 8))))
+                             (with-open-file (in val :element-type '(unsigned-byte 8))
+                               (loop for n of-type fixnum = (read-sequence buf in)
+                                     until (zerop n)
+                                     do (write-sequence buf stream :end n)))))
+                 (string (write-sequence (babel:string-to-octets val) stream))
+                 (otherwise (write-sequence (babel:string-to-octets (princ-to-string val)) stream)))
+               (crlf)
+            finally
+               (boundary-line t)))))
+
 (defun-careful request (uri &key (method :get) (version 1.1)
                             content headers
                             (timeout *default-timeout*) keep-alive
@@ -124,7 +181,12 @@
   (let* ((uri (if (quri:uri-p uri)
                   uri
                   (quri:uri uri)))
-         (content (if (consp content)
+         (multipart-p (and (consp content)
+                           (find-if #'pathnamep content :key #'cdr)))
+         (boundary (and multipart-p
+                        (make-random-string 12)))
+         (content (if (and (consp content)
+                           (not multipart-p))
                       (quri:url-encode-params content)
                       content))
          (socket (or socket
@@ -159,17 +221,22 @@
                (when (and keep-alive
                           (= version 1.0))
                  (write-header* :connection "keep-alive"))
-               (etypecase content
-                 (null)
-                 (string
-                  (write-header* :content-type "application/x-www-form-urlencoded")
-                  (write-header* :content-length (length content)))
-                 (pathname
-                  (write-header* :content-type (mimes:mime content))
-                  (if-let ((content-length (assoc :content-length headers :test #'string-equal)))
-                    (write-header :content-length (cdr content-length))
-                    (with-open-file (in content)
-                      (write-header :content-length (file-length in))))))
+               (if multipart-p
+                   (progn
+                     (write-header* :content-type (format nil "multipart/form-data; boundary=~A" boundary))
+                     (write-header* :content-length
+                                    (multipart-content-length content boundary)))
+                   (etypecase content
+                     (null)
+                     (string
+                      (write-header* :content-type "application/x-www-form-urlencoded")
+                      (write-header* :content-length (length content)))
+                     (pathname
+                      (write-header* :content-type (mimes:mime content))
+                      (if-let ((content-length (assoc :content-length headers :test #'string-equal)))
+                        (write-header :content-length (cdr content-length))
+                        (with-open-file (in content)
+                          (write-header :content-length (file-length in)))))))
 
                ;; Custom headers
                (loop for (name . value) in headers
@@ -189,7 +256,9 @@
       (null)
       (string (write-string content stream))
       (pathname (with-open-file (in content)
-                  (copy-stream in stream))))
+                  (copy-stream in stream)))
+      (cons
+       (write-multipart-content content boundary stream)))
     (force-output stream)
 
     (tagbody
