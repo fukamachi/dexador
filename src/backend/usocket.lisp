@@ -183,10 +183,11 @@
                   (quri:uri uri)))
          (multipart-p (and (consp content)
                            (find-if #'pathnamep content :key #'cdr)))
+         (form-urlencoded-p (and (consp content)
+                                 (not multipart-p)))
          (boundary (and multipart-p
                         (make-random-string 12)))
-         (content (if (and (consp content)
-                           (not multipart-p))
+         (content (if form-urlencoded-p
                       (quri:url-encode-params content)
                       content))
          (socket (or socket
@@ -221,22 +222,26 @@
                (when (and keep-alive
                           (= version 1.0))
                  (write-header* :connection "keep-alive"))
-               (if multipart-p
-                   (progn
-                     (write-header* :content-type (format nil "multipart/form-data; boundary=~A" boundary))
-                     (write-header* :content-length
-                                    (multipart-content-length content boundary)))
-                   (etypecase content
-                     (null)
-                     (string
-                      (write-header* :content-type "application/x-www-form-urlencoded")
-                      (write-header* :content-length (length content)))
-                     (pathname
-                      (write-header* :content-type (mimes:mime content))
-                      (if-let ((content-length (assoc :content-length headers :test #'string-equal)))
-                        (write-header :content-length (cdr content-length))
-                        (with-open-file (in content)
-                          (write-header :content-length (file-length in)))))))
+               (cond
+                 (multipart-p
+                  (write-header* :content-type (format nil "multipart/form-data; boundary=~A" boundary))
+                  (write-header* :content-length
+                                 (multipart-content-length content boundary)))
+                 (form-urlencoded-p
+                  (write-header* :content-type "application/x-www-form-urlencoded")
+                  (write-header* :content-length (length content)))
+                 (t
+                  (etypecase content
+                    (null)
+                    (string
+                     (write-header* :content-type "text/plain")
+                     (write-header* :content-length (length content)))
+                    (pathname
+                     (write-header* :content-type (mimes:mime content))
+                     (if-let ((content-length (assoc :content-length headers :test #'string-equal)))
+                       (write-header :content-length (cdr content-length))
+                       (with-open-file (in content)
+                         (write-header :content-length (file-length in))))))))
 
                ;; Custom headers
                (loop for (name . value) in headers
@@ -254,7 +259,7 @@
     ;; Sending the content
     (etypecase content
       (null)
-      (string (write-string content stream))
+      (string (write-sequence (babel:string-to-octets content) stream))
       (pathname (with-open-file (in content)
                   (copy-stream in stream)))
       (cons
