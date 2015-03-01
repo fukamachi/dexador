@@ -21,6 +21,7 @@
                :quri
                :fast-io
                :babel
+               :cl-ppcre
                :trivial-mimes
                :chipz
                #-dexador-no-ssl :cl+ssl
@@ -28,9 +29,10 @@
   :components ((:module "src"
                 :components
                 ((:file "dexador" :depends-on ("backend"))
+                 (:file "encoding")
                  (:file "util")
                  (:module "backend"
-                  :depends-on ("util")
+                  :depends-on ("encoding" "util")
                   :components
                   ((:file "usocket"))))))
   :description ""

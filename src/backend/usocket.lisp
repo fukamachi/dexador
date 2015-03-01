@@ -2,6 +2,7 @@
 (defpackage dexador.backend.usocket
   (:nicknames :dex.usocket)
   (:use :cl
+        :dexador.encoding
         :dexador.util)
   (:import-from :usocket
                 :socket-connect
@@ -114,6 +115,19 @@
      (chipz:decompress nil (chipz:make-dstate :deflate) body))
     (T body)))
 
+(defun decode-body (content-type body)
+  (let ((charset (and content-type
+                      (detect-charset content-type))))
+    (if charset
+        (handler-case
+            (babel:octets-to-string body :encoding charset)
+          (error (e)
+            (warn (format nil "Failed to decode the body to ~S due to the following error (falling back to binary):~%  ~A"
+                          charset
+                          e))
+            (return-from decode-body body)))
+        body)))
+
 (defun content-disposition (key val)
   (format nil "Content-Disposition: form-data; name=\"~A\"~:[~;~:*; filename=\"~A\"~]~C~C"
           key
@@ -176,7 +190,8 @@
                             (timeout *default-timeout*) keep-alive
                             (max-redirects 5)
                             ssl-key-file ssl-cert-file ssl-key-password
-                            socket verbose)
+                            socket verbose
+                            force-binary)
   (declare (ignorable ssl-key-file ssl-cert-file ssl-key-password))
   (let* ((uri (if (quri:uri-p uri)
                   uri
@@ -304,12 +319,17 @@
                                 :timeout timeout
                                 :keep-alive keep-alive
                                 :max-redirects (1- max-redirects)
-                                :verbose verbose))))))
+                                :verbose verbose
+                                :force-binary force-binary))))))
            (unless keep-alive
              (usocket:socket-close socket))
-           (return-from request
-             (values (decompress-body (gethash "content-encoding" response-headers) body)
-                     status
-                     response-headers
-                     (when keep-alive
-                       socket))))))))
+           (let ((body (decompress-body (gethash "content-encoding" response-headers) body)))
+             (return-from request
+               (values (if force-binary
+                           body
+                           (decode-body (gethash "content-type" response-headers)
+                                        body))
+                       status
+                       response-headers
+                       (when keep-alive
+                         socket)))))))))
