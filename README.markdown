@@ -15,6 +15,64 @@ This software is still ALPHA quality. The APIs will be likely to change.
           :content '(("name" . "fukamachi") ("password" . "1ispa1ien")))
 ```
 
+### Posting a form-data
+
+You can specify a form-data at `:content` in an association list. The data will be sent in `application/x-www-form-urlencoded` format.
+
+```common-lisp
+(dex:post "http://example.com/entry/create"
+          :content '(("title" . "The Truth About Lisp")
+                     ("body" . "In which the truth about lisp is revealed, and some alternatives are enumerated.")))
+```
+
+### Auto-detects Multipart
+
+If the association list contains a pathname, the data will be sent as `multipart/form-data`.
+
+```common-lisp
+(dex:post "http://example.com/entry/create"
+          :content '(("photo" . #P"images/2015030201.jpg")))
+```
+
+### Faking a User-Agent header
+
+You can overwrite the default User-Agent header by simply specifying "User-Agent" in `:headers`.
+
+```common-lisp
+(dex:head "http://www.sbcl.org/" :verbose t)
+;-> >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+;   HEAD / HTTP/1.1
+;   User-Agent: Dexador/0.1 (SBCL 1.2.6); Darwin; 14.1.0
+;   Host: www.sbcl.org
+;   Accept: */*
+;   
+;   >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+(dex:head "http://www.sbcl.org/"
+          :headers '(("User-Agent" . "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_10_2) AppleWebKit/600.3.18 (KHTML, like Gecko) Version/8.0.3 Safari/600.3.18"))
+          :verbose t)
+;-> >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+;   HEAD / HTTP/1.1
+;   User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_10_2) AppleWebKit/600.3.18 (KHTML, like Gecko) Version/8.0.3 Safari/600.3.18
+;   Host: www.sbcl.org
+;   Accept: */*
+;   
+;   >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+```
+
+### Reusing a connection
+
+If `:keep-alive` is `T`, the connection to a server won't be closed automatically and it returns a socket object at the fourth value. The socket object can be used for `:socket` value.
+
+```common-lisp
+(multiple-value-bind (body status headers socket)
+    (dex:get "https://github.com/" :keep-alive t)
+  (dex:get "https://github.com/fukamachi/dexador"
+           :socket socket))
+```
+
+The flag will be ignored and always be closed if the `:method` is `:HEAD`.
+
 ## Functions
 
 All functions take similar arguments.
