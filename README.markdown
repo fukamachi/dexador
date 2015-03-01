@@ -34,6 +34,21 @@ If the association list contains a pathname, the data will be sent as `multipart
           :content '(("photo" . #P"images/2015030201.jpg")))
 ```
 
+### Following redirects (GET or HEAD)
+
+If the server reports that the requested page has moved to a different location (indicated with a Location header and a 3XX response code), Dexador will redo the request on the new place, the fourth return value shows.
+
+```common-lisp
+(dex:head "http://lisp.org")
+;=> ""
+;   200
+;   #<HASH-TABLE :TEST EQUAL :COUNT 7 {100D2A47A3}>
+;   #<QURI.URI.HTTP:URI-HTTP http://lisp.org/index.html>
+;   NIL
+```
+
+You can limit the count of redirection by specifying `:max-redirects` with an integer. The default value is `5`.
+
 ### Faking a User-Agent header
 
 You can overwrite the default User-Agent header by simply specifying "User-Agent" in `:headers`.
@@ -92,6 +107,8 @@ All functions take similar arguments.
   - A flag if the connection keep connected even after the HTTP request. The default is `NIL`.
 - `max-redirects` (fixnum)
   - The limit of redirections. The default is `5`. If the redirection exceeds the limit, functions return the last response (not raise a condition).
+- `force-binary` (boolean)
+  - A flag for suppressing auto-decoding of the response body.
 - `ssl-key-file`, `ssl-cert-file`, `ssl-key-password`
   - for HTTPS connection
 - `socket`
@@ -117,7 +134,7 @@ Send an HTTP request to `uri`.
 ### \[Function\] get
 
 ```common-lisp
-(dex:get uri &key version headers keep-alive timeout max-redirects
+(dex:get uri &key version headers keep-alive timeout max-redirects force-binary
                ssl-key-file ssl-cert-file ssl-key-password
                socket verbose)
 ```
@@ -125,7 +142,7 @@ Send an HTTP request to `uri`.
 ### \[Function\] post
 
 ```common-lisp
-(dex:post uri &key version headers content keep-alive timeout
+(dex:post uri &key version headers content keep-alive timeout force-binary
                 ssl-key-file ssl-cert-file ssl-key-password
                 socket verbose)
 ```
@@ -133,7 +150,7 @@ Send an HTTP request to `uri`.
 ### \[Function\] head
 
 ```common-lisp
-(dex:head uri &key version headers timeout max-redirects
+(dex:head uri &key version headers timeout max-redirects force-binary
                 ssl-key-file ssl-cert-file ssl-key-password
                 socket verbose)
 ```
@@ -141,7 +158,7 @@ Send an HTTP request to `uri`.
 ### \[Function\] put
 
 ```common-lisp
-(dex:put uri &key version headers content keep-alive timeout
+(dex:put uri &key version headers content keep-alive timeout force-binary
                ssl-key-file ssl-cert-file ssl-key-password
                socket verbose)
 ```
@@ -149,7 +166,7 @@ Send an HTTP request to `uri`.
 ### \[Function\] delete
 
 ```common-lisp
-(dex:delete uri &key version headers keep-alive timeout
+(dex:delete uri &key version headers keep-alive timeout force-binary
                   ssl-key-file ssl-cert-file ssl-key-password
                   socket verbose)
 ```
