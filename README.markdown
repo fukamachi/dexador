@@ -62,7 +62,7 @@ You can overwrite the default User-Agent header by simply specifying "User-Agent
 
 ### Reusing a connection
 
-If `:keep-alive` is `T`, the connection to a server won't be closed automatically and it returns a socket object at the fourth value. The socket object can be used for `:socket` value.
+If `:keep-alive` is `T`, the connection to a server won't be closed automatically and it returns a socket object at the fifth value. The socket object can be used for `:socket` value.
 
 ```common-lisp
 (multiple-value-bind (body status headers socket)
@@ -108,6 +108,7 @@ All functions take similar arguments.
 ;=> body
 ;   status
 ;   response-headers
+;   uri
 ;   socket
 ```
 

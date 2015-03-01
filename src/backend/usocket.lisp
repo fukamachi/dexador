@@ -290,10 +290,7 @@
            (when (and (member status '(301 302 303 307) :test #'=)
                       (member method '(:get :head) :test #'eq)
                       (gethash "location" response-headers))
-             (let* ((location-uri (quri:uri (gethash "location" response-headers)))
-                    (next-first-line-data
-                      (with-fast-output (buffer)
-                        (write-first-line method location-uri version buffer))))
+             (let ((location-uri (quri:uri (gethash "location" response-headers))))
                (if (or (null (uri-host location-uri))
                        (and (string= (uri-host location-uri)
                                      (uri-host uri))
@@ -301,9 +298,13 @@
                                  (uri-port uri))))
                    (progn
                      (unless (= 0 max-redirects)
-                       (when verbose
-                         (print-verbose-data next-first-line-data headers-data))
-                       (write-sequence next-first-line-data stream)
+                       (setq uri location-uri)
+                       (let ((next-first-line-data
+                               (with-fast-output (buffer)
+                                 (write-first-line method location-uri version buffer))))
+                         (when verbose
+                           (print-verbose-data next-first-line-data headers-data))
+                         (write-sequence next-first-line-data stream))
                        (write-sequence headers-data stream)
                        (force-output stream)
                        (decf max-redirects)
@@ -331,5 +332,6 @@
                                         body))
                        status
                        response-headers
+                       uri
                        (when keep-alive
                          socket)))))))))
