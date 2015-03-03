@@ -333,5 +333,6 @@
                        status
                        response-headers
                        uri
-                       (when keep-alive
+                       (when (and keep-alive
+                                  (not (equal (gethash "connection" response-headers) "close")))
                          socket)))))))))
