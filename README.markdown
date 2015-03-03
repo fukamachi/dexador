@@ -105,6 +105,8 @@ All functions take similar arguments.
   - The seconds to timeout of the HTTP connection. The default is `10`, the value of `*default-timeout*`.
 - `keep-alive` (boolean)
   - A flag if the connection keep connected even after the HTTP request. The default is `NIL`.
+- `use-connection-pool` (boolean)
+  - A flag if use a connection pool.
 - `max-redirects` (fixnum)
   - The limit of redirections. The default is `5`. If the redirection exceeds the limit, functions return the last response (not raise a condition).
 - `force-binary` (boolean)
