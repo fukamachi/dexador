@@ -299,7 +299,8 @@
              (read-response stream (not (eq method :head)))
            (let ((status (http-status http))
                  (response-headers (http-headers http)))
-             (when (= status 0)
+             (when (and reusing-socket-p
+                        (= status 0))
                (setf (getf args :use-connection-pool) nil)
                ;; TODO: first-line-data & headers-data can be reused.
                (return-from request
