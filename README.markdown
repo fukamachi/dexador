@@ -1,6 +1,6 @@
 # Dexador
 
-Dexador is yet another HTTP client for Common Lisp.
+Dexador is yet another HTTP client for Common Lisp with neat APIs and connection-pooling.
 
 ## Warning
 
@@ -77,16 +77,9 @@ You can overwrite the default User-Agent header by simply specifying "User-Agent
 
 ### Reusing a connection
 
-If `:keep-alive` is `T`, the connection to a server won't be closed automatically and it returns a socket object at the fifth value. The socket object can be used for `:socket` value.
+Dexador reuses a connection by default. As it skips a TCP handshake, it would be much faster when you send requests to the same host continuously.
 
-```common-lisp
-(multiple-value-bind (body status headers socket)
-    (dex:get "https://github.com/" :keep-alive t)
-  (dex:get "https://github.com/fukamachi/dexador"
-           :socket socket))
-```
-
-The flag will be ignored and always be closed if the `:method` is `:HEAD`.
+The interval to reuse the connection can be configured with `*reuse-interval*`. The default value is `5` (sec).
 
 ## Functions
 
