@@ -300,6 +300,7 @@
                  (response-headers (http-headers http)))
              (when (= status 0)
                (setf (getf args :use-connection-pool) nil)
+               ;; TODO: first-line-data & headers-data can be reused.
                (return-from request
                  (apply #'request uri args)))
              (when (and (member status '(301 302 303 307) :test #'=)
