@@ -4,6 +4,9 @@
   (:use :cl
         :dexador.encoding
         :dexador.util)
+  (:import-from :dexador.connection-cache
+                :steal-connection
+                :push-connection)
   (:import-from :usocket
                 :socket-connect
                 :socket-stream)
@@ -24,6 +27,7 @@
                 :uri-p
                 :uri-host
                 :uri-port
+                :uri-authority
                 :uri-scheme
                 :url-encode-params)
   (:import-from :chipz
@@ -187,7 +191,7 @@
 
 (defun-careful request (uri &key (method :get) (version 1.1)
                             content headers
-                            (timeout *default-timeout*) keep-alive
+                            (timeout *default-timeout*) (keep-alive t)
                             (max-redirects 5)
                             ssl-key-file ssl-cert-file ssl-key-password
                             socket verbose
@@ -206,6 +210,7 @@
                       (quri:url-encode-params content)
                       content))
          (socket (or socket
+                     (steal-connection (uri-authority uri))
                      (usocket:socket-connect (uri-host uri)
                                              (uri-port uri)
                                              :timeout timeout
@@ -322,8 +327,10 @@
                                 :max-redirects (1- max-redirects)
                                 :verbose verbose
                                 :force-binary force-binary))))))
-           (unless keep-alive
-             (usocket:socket-close socket))
+           (if keep-alive
+               (unless (equal (gethash "connection" response-headers) "close")
+                 (push-connection (uri-authority uri) socket))
+               (usocket:socket-close socket))
            (let ((body (decompress-body (gethash "content-encoding" response-headers) body)))
              (return-from request
                (values (if force-binary

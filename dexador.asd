@@ -25,14 +25,16 @@
                :trivial-mimes
                :chipz
                #-dexador-no-ssl :cl+ssl
+               :bordeaux-threads
                :alexandria)
   :components ((:module "src"
                 :components
                 ((:file "dexador" :depends-on ("backend"))
                  (:file "encoding")
+                 (:file "connection-cache")
                  (:file "util")
                  (:module "backend"
-                  :depends-on ("encoding" "util")
+                  :depends-on ("encoding" "connection-cache" "util")
                   :components
                   ((:file "usocket"))))))
   :description "Yet another HTTP client for Common Lisp"
