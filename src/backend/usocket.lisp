@@ -33,6 +33,7 @@
   (:import-from :chipz
                 :decompress
                 :make-dstate)
+  #-dexador-no-ssl
   (:import-from :cl+ssl
                 :make-ssl-client-stream)
   (:import-from :alexandria
