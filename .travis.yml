@@ -1,0 +1,37 @@
+language: common-lisp
+
+env:
+  matrix:
+    - LISP=sbcl
+    - LISP=ccl
+    - LISP=clisp
+    - LISP=abcl
+
+install:
+  # Install cl-travis
+  - curl https://raw.githubusercontent.com/luismbo/cl-travis/master/install.sh | bash
+
+before_script:
+  - git clone https://github.com/fukamachi/prove ~/lisp/prove
+  - git clone https://github.com/fukamachi/xsubseq ~/lisp/xsubseq
+
+script:
+  - cl -l prove
+       -e '(or (prove:run :fast-http-test) (uiop:quit -1))'
+language: common-lisp
+
+env:
+  matrix:
+    - LISP=sbcl
+    - LISP=ccl
+    - LISP=clisp
+    - LISP=abcl
+    - LISP=ecl
+
+install:
+  # Install cl-travis
+  - curl https://raw.githubusercontent.com/luismbo/cl-travis/master/install.sh | bash
+
+script:
+  - cl -l prove
+       -e '(or (prove:run :dexador-test) (uiop:quit -1))'
