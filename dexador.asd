@@ -35,7 +35,7 @@
                   :depends-on ("encoding" "util")
                   :components
                   ((:file "usocket"))))))
-  :description ""
+  :description "Yet another HTTP client for Common Lisp"
   :long-description
   #.(with-open-file (stream (merge-pathnames
                              #p"README.markdown"
