@@ -277,23 +277,24 @@
                                              :content-type :content-length) :test #'string-equal)
                          do (write-header name value))
                  (fast-write-sequence +crlf+ buffer)))))
-      (write-sequence first-line-data stream)
-      (write-sequence headers-data stream)
-      (force-output stream)
-      (when verbose
-        (print-verbose-data first-line-data headers-data))
-
-      ;; Sending the content
-      (etypecase content
-        (null)
-        (string (write-sequence (babel:string-to-octets content) stream))
-        (pathname (with-open-file (in content :element-type '(unsigned-byte 8))
-                    (copy-stream in stream)))
-        (cons
-         (write-multipart-content content boundary stream)))
-      (force-output stream)
-
       (tagbody
+       retry
+         (write-sequence first-line-data stream)
+         (write-sequence headers-data stream)
+         (force-output stream)
+         (when verbose
+           (print-verbose-data first-line-data headers-data))
+
+         ;; Sending the content
+         (etypecase content
+           (null)
+           (string (write-sequence (babel:string-to-octets content) stream))
+           (pathname (with-open-file (in content :element-type '(unsigned-byte 8))
+                       (copy-stream in stream)))
+           (cons
+            (write-multipart-content content boundary stream)))
+         (force-output stream)
+
        start-reading
          (multiple-value-bind (http body)
              (read-response stream (not (eq method :head)))
@@ -301,10 +302,11 @@
                  (response-headers (http-headers http)))
              (when (and reusing-socket-p
                         (= status 0))
-               (setf (getf args :use-connection-pool) nil)
-               ;; TODO: first-line-data & headers-data can be reused.
-               (return-from request
-                 (apply #'request uri args)))
+               (setf use-connection-pool nil
+                     reusing-socket-p nil
+                     socket (make-new-connection uri)
+                     stream (usocket:socket-stream socket))
+               (go retry))
              (when (and (member status '(301 302 303 307) :test #'=)
                         (member method '(:get :head) :test #'eq)
                         (gethash "location" response-headers))
