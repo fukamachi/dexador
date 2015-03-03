@@ -287,7 +287,7 @@
       (etypecase content
         (null)
         (string (write-sequence (babel:string-to-octets content) stream))
-        (pathname (with-open-file (in content)
+        (pathname (with-open-file (in content :element-type '(unsigned-byte 8))
                     (copy-stream in stream)))
         (cons
          (write-multipart-content content boundary stream)))
