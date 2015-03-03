@@ -60,4 +60,57 @@
        (is code 302))))
  "redirection")
 
+(test-app
+ (lambda (env)
+   (cond
+     ((string= (getf env :path-info) "/upload")
+      (let ((buf (make-array (getf env :content-length)
+                             :element-type '(unsigned-byte 8))))
+        (read-sequence buf (getf env :raw-body))
+        `(200 ()
+              (,(babel:octets-to-string buf)))))
+     (T
+      (let ((req (clack.request:make-request env)))
+        `(200 ()
+              (,(with-output-to-string (s)
+                  (loop for (k . v) in (clack.request:body-parameter req)
+                        do (format s "~&~A: ~A~%"
+                                   k
+                                   (if (and (consp v)
+                                            (streamp (car v)))
+                                       (let* ((buf (make-array 1024 :element-type '(unsigned-byte 8)))
+                                              (n (read-sequence buf (car v))))
+                                         (babel:octets-to-string (subseq buf 0 n)))
+                                       v))))))))))
+ (lambda ()
+   (subtest "content in alist"
+     (multiple-value-bind (body code headers)
+         (dex:post "http://localhost:4242/"
+                   :content '(("name" . "Eitaro")
+                              ("email" . "e.arrows@gmail.com")))
+       (declare (ignore headers))
+       (is code 200)
+       (is body "name: Eitaro
+email: e.arrows@gmail.com
+")))
+   (subtest "multipart"
+     (multiple-value-bind (body code)
+         (dex:post "http://localhost:4242/"
+                   :content `(("title" . "Road to Lisp")
+                              ("body" . ,(asdf:system-relative-pathname :dexador #P"t/data/quote.txt"))))
+       (is code 200)
+       (is body
+           "title: Road to Lisp
+body: \"Within a couple weeks of learning Lisp I found programming in any other language unbearably constraining.\" -- Paul Graham, Road to Lisp
+
+")))
+   (subtest "upload"
+     (multiple-value-bind (body code)
+         (dex:post "http://localhost:4242/upload"
+                   :content (asdf:system-relative-pathname :dexador #P"t/data/quote.txt"))
+       (is code 200)
+       (is body "\"Within a couple weeks of learning Lisp I found programming in any other language unbearably constraining.\" -- Paul Graham, Road to Lisp
+"))))
+ "POST request")
+
 (finalize)
