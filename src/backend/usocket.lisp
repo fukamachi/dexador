@@ -189,157 +189,162 @@
             finally
                (boundary-line t)))))
 
-(defun-careful request (uri &key (method :get) (version 1.1)
+(defun-careful request (uri &rest args
+                            &key (method :get) (version 1.1)
                             content headers
-                            (timeout *default-timeout*) (keep-alive t)
+                            (timeout *default-timeout*) (keep-alive t) (use-connection-pool t)
                             (max-redirects 5)
                             ssl-key-file ssl-cert-file ssl-key-password
                             socket verbose
                             force-binary)
   (declare (ignorable ssl-key-file ssl-cert-file ssl-key-password))
-  (let* ((uri (if (quri:uri-p uri)
-                  uri
-                  (quri:uri uri)))
-         (multipart-p (and (consp content)
-                           (find-if #'pathnamep content :key #'cdr)))
-         (form-urlencoded-p (and (consp content)
-                                 (not multipart-p)))
-         (boundary (and multipart-p
-                        (make-random-string 12)))
-         (content (if form-urlencoded-p
-                      (quri:url-encode-params content)
-                      content))
-         (socket (or socket
-                     (steal-connection (uri-authority uri))
-                     (usocket:socket-connect (uri-host uri)
-                                             (uri-port uri)
-                                             :timeout timeout
-                                             :element-type '(unsigned-byte 8))))
-         (stream (usocket:socket-stream socket))
-         (stream (if (string= (uri-scheme uri) "https")
-                     #+dexador-no-ssl
-                     (error "SSL not supported. Remove :dexador-no-ssl from *features* to enable SSL.")
-                     #-dexador-no-ssl
-                     (cl+ssl:make-ssl-client-stream stream
-                                                    :certificate ssl-cert-file
-                                                    :key ssl-key-file
-                                                    :password ssl-key-password)
-                     stream))
-         (first-line-data
-           (with-fast-output (buffer)
-             (write-first-line method uri version buffer)))
-         (headers-data
-           (flet ((write-header* (name value)
-                    (let ((header (assoc name headers :test #'string-equal)))
-                      (if header
-                          (when (cdr header)
-                            (write-header name (cdr header)))
-                          (write-header name value)))))
-             (with-header-output (buffer)
-               (write-header* :user-agent #.*default-user-agent*)
-               (write-header* :host (uri-host uri))
-               (write-header* :accept "*/*")
-               (when (and keep-alive
-                          (= version 1.0))
-                 (write-header* :connection "keep-alive"))
-               (cond
-                 (multipart-p
-                  (write-header* :content-type (format nil "multipart/form-data; boundary=~A" boundary))
-                  (write-header* :content-length
-                                 (multipart-content-length content boundary)))
-                 (form-urlencoded-p
-                  (write-header* :content-type "application/x-www-form-urlencoded")
-                  (write-header* :content-length (length content)))
-                 (t
-                  (etypecase content
-                    (null)
-                    (string
-                     (write-header* :content-type "text/plain")
-                     (write-header* :content-length (length content)))
-                    (pathname
-                     (write-header* :content-type (mimes:mime content))
-                     (if-let ((content-length (assoc :content-length headers :test #'string-equal)))
-                       (write-header :content-length (cdr content-length))
-                       (with-open-file (in content)
-                         (write-header :content-length (file-length in))))))))
+  (flet ((make-new-connection (uri)
+           (usocket:socket-connect (uri-host uri)
+                                   (uri-port uri)
+                                   :timeout timeout
+                                   :element-type '(unsigned-byte 8))))
+    (let* ((uri (if (quri:uri-p uri)
+                    uri
+                    (quri:uri uri)))
+           (multipart-p (and (consp content)
+                             (find-if #'pathnamep content :key #'cdr)))
+           (form-urlencoded-p (and (consp content)
+                                   (not multipart-p)))
+           (boundary (and multipart-p
+                          (make-random-string 12)))
+           (content (if form-urlencoded-p
+                        (quri:url-encode-params content)
+                        content))
+           (socket (or socket
+                       (and use-connection-pool
+                            (steal-connection (uri-authority uri)))))
+           (reusing-socket-p (not (null socket)))
+           (socket (or socket
+                       (make-new-connection uri)))
+           (stream (usocket:socket-stream socket))
+           (stream (if (string= (uri-scheme uri) "https")
+                       #+dexador-no-ssl
+                       (error "SSL not supported. Remove :dexador-no-ssl from *features* to enable SSL.")
+                       #-dexador-no-ssl
+                       (cl+ssl:make-ssl-client-stream stream
+                                                      :certificate ssl-cert-file
+                                                      :key ssl-key-file
+                                                      :password ssl-key-password)
+                       stream))
+           (first-line-data
+             (with-fast-output (buffer)
+               (write-first-line method uri version buffer)))
+           (headers-data
+             (flet ((write-header* (name value)
+                      (let ((header (assoc name headers :test #'string-equal)))
+                        (if header
+                            (when (cdr header)
+                              (write-header name (cdr header)))
+                            (write-header name value)))))
+               (with-header-output (buffer)
+                 (write-header* :user-agent #.*default-user-agent*)
+                 (write-header* :host (uri-host uri))
+                 (write-header* :accept "*/*")
+                 (when (and keep-alive
+                            (= version 1.0))
+                   (write-header* :connection "keep-alive"))
+                 (cond
+                   (multipart-p
+                    (write-header* :content-type (format nil "multipart/form-data; boundary=~A" boundary))
+                    (write-header* :content-length
+                                   (multipart-content-length content boundary)))
+                   (form-urlencoded-p
+                    (write-header* :content-type "application/x-www-form-urlencoded")
+                    (write-header* :content-length (length content)))
+                   (t
+                    (etypecase content
+                      (null)
+                      (string
+                       (write-header* :content-type "text/plain")
+                       (write-header* :content-length (length content)))
+                      (pathname
+                       (write-header* :content-type (mimes:mime content))
+                       (if-let ((content-length (assoc :content-length headers :test #'string-equal)))
+                         (write-header :content-length (cdr content-length))
+                         (with-open-file (in content)
+                           (write-header :content-length (file-length in))))))))
 
-               ;; Custom headers
-               (loop for (name . value) in headers
-                     unless (member name '(:user-agent :host :accept
-                                           :connection
-                                           :content-type :content-length) :test #'string-equal)
-                       do (write-header name value))
-               (fast-write-sequence +crlf+ buffer)))))
-    (write-sequence first-line-data stream)
-    (write-sequence headers-data stream)
-    (force-output stream)
-    (when verbose
-      (print-verbose-data first-line-data headers-data))
+                 ;; Custom headers
+                 (loop for (name . value) in headers
+                       unless (member name '(:user-agent :host :accept
+                                             :connection
+                                             :content-type :content-length) :test #'string-equal)
+                         do (write-header name value))
+                 (fast-write-sequence +crlf+ buffer)))))
+      (write-sequence first-line-data stream)
+      (write-sequence headers-data stream)
+      (force-output stream)
+      (when verbose
+        (print-verbose-data first-line-data headers-data))
 
-    ;; Sending the content
-    (etypecase content
-      (null)
-      (string (write-sequence (babel:string-to-octets content) stream))
-      (pathname (with-open-file (in content)
-                  (copy-stream in stream)))
-      (cons
-       (write-multipart-content content boundary stream)))
-    (force-output stream)
+      ;; Sending the content
+      (etypecase content
+        (null)
+        (string (write-sequence (babel:string-to-octets content) stream))
+        (pathname (with-open-file (in content)
+                    (copy-stream in stream)))
+        (cons
+         (write-multipart-content content boundary stream)))
+      (force-output stream)
 
-    (tagbody
-     start-reading
-       (multiple-value-bind (http body)
-           (read-response stream (not (eq method :head)))
-         (let ((status (http-status http))
-               (response-headers (http-headers http)))
-           (when (and (member status '(301 302 303 307) :test #'=)
-                      (member method '(:get :head) :test #'eq)
-                      (gethash "location" response-headers))
-             (let ((location-uri (quri:uri (gethash "location" response-headers))))
-               (if (or (null (uri-host location-uri))
-                       (and (string= (uri-host location-uri)
-                                     (uri-host uri))
-                            (eql (uri-port location-uri)
-                                 (uri-port uri))))
-                   (progn
-                     (unless (= 0 max-redirects)
-                       (setq uri location-uri)
-                       (let ((next-first-line-data
-                               (with-fast-output (buffer)
-                                 (write-first-line method location-uri version buffer))))
-                         (when verbose
-                           (print-verbose-data next-first-line-data headers-data))
-                         (write-sequence next-first-line-data stream))
-                       (write-sequence headers-data stream)
-                       (force-output stream)
-                       (decf max-redirects)
-                       (go start-reading)))
-                   (progn
-                     (usocket:socket-close socket)
-                     (return-from request
-                       (request location-uri
-                                :method method
-                                :version version
-                                :content content
-                                :headers (nconc `((:host . ,(uri-host location-uri))) headers)
-                                :timeout timeout
-                                :keep-alive keep-alive
-                                :max-redirects (1- max-redirects)
-                                :verbose verbose
-                                :force-binary force-binary))))))
-           (if keep-alive
-               (unless (equal (gethash "connection" response-headers) "close")
-                 (push-connection (uri-authority uri) socket))
-               (usocket:socket-close socket))
-           (let ((body (decompress-body (gethash "content-encoding" response-headers) body)))
-             (return-from request
-               (values (if force-binary
-                           body
-                           (decode-body (gethash "content-type" response-headers)
-                                        body))
-                       status
-                       response-headers
-                       uri
-                       (when (and keep-alive
-                                  (not (equal (gethash "connection" response-headers) "close")))
-                         socket)))))))))
+      (tagbody
+       start-reading
+         (multiple-value-bind (http body)
+             (read-response stream (not (eq method :head)))
+           (let ((status (http-status http))
+                 (response-headers (http-headers http)))
+             (when (= status 0)
+               (setf (getf args :use-connection-pool) nil)
+               (return-from request
+                 (apply #'request uri args)))
+             (when (and (member status '(301 302 303 307) :test #'=)
+                        (member method '(:get :head) :test #'eq)
+                        (gethash "location" response-headers))
+               (let ((location-uri (quri:uri (gethash "location" response-headers))))
+                 (if (or (null (uri-host location-uri))
+                         (and (string= (uri-host location-uri)
+                                       (uri-host uri))
+                              (eql (uri-port location-uri)
+                                   (uri-port uri))))
+                     (progn
+                       (unless (= 0 max-redirects)
+                         (setq uri location-uri)
+                         (let ((next-first-line-data
+                                 (with-fast-output (buffer)
+                                   (write-first-line method location-uri version buffer))))
+                           (when verbose
+                             (print-verbose-data next-first-line-data headers-data))
+                           (write-sequence next-first-line-data stream))
+                         (write-sequence headers-data stream)
+                         (force-output stream)
+                         (decf max-redirects)
+                         (go start-reading)))
+                     (progn
+                       (usocket:socket-close socket)
+                       (setf (getf args :headers)
+                             (nconc `((:host . ,(uri-host location-uri))) headers))
+                       (setf (getf args :max-redirects)
+                             (1- max-redirects))
+                       (return-from request
+                         (apply #'request location-uri args))))))
+             (if keep-alive
+                 (unless (equal (gethash "connection" response-headers) "close")
+                   (push-connection (uri-authority uri) socket))
+                 (usocket:socket-close socket))
+             (let ((body (decompress-body (gethash "content-encoding" response-headers) body)))
+               (return-from request
+                 (values (if force-binary
+                             body
+                             (decode-body (gethash "content-type" response-headers)
+                                          body))
+                         status
+                         response-headers
+                         uri
+                         (when (and keep-alive
+                                    (not (equal (gethash "connection" response-headers) "close")))
+                           socket))))))))))
