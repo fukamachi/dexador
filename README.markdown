@@ -1,5 +1,7 @@
 # Dexador
 
+[![Build Status](https://travis-ci.org/fukamachi/dexador.svg?branch=master)](https://travis-ci.org/fukamachi/dexador)
+
 Dexador is yet another HTTP client for Common Lisp with neat APIs and connection-pooling.
 
 ## Warning
