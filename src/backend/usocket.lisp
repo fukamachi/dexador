@@ -201,10 +201,21 @@
                             force-binary)
   (declare (ignorable ssl-key-file ssl-cert-file ssl-key-password))
   (flet ((make-new-connection (uri)
-           (usocket:socket-connect (uri-host uri)
-                                   (uri-port uri)
-                                   :timeout timeout
-                                   :element-type '(unsigned-byte 8))))
+           (let ((stream
+                   (usocket:socket-stream
+                    (usocket:socket-connect (uri-host uri)
+                                            (uri-port uri)
+                                            :timeout timeout
+                                            :element-type '(unsigned-byte 8)))))
+             (if (string= (uri-scheme uri) "https")
+                 #+dexador-no-ssl
+                 (error "SSL not supported. Remove :dexador-no-ssl from *features* to enable SSL.")
+                 #-dexador-no-ssl
+                 (cl+ssl:make-ssl-client-stream stream
+                                                :certificate ssl-cert-file
+                                                :key ssl-key-file
+                                                :password ssl-key-password)
+                 stream))))
     (let* ((uri (if (quri:uri-p uri)
                     uri
                     (quri:uri uri)))
@@ -222,17 +233,7 @@
                             (steal-connection (uri-authority uri)))))
            (reusing-stream-p (not (null stream)))
            (stream (or stream
-                       (usocket:socket-stream (make-new-connection uri))))
-           (stream (if (and (not reusing-stream-p) ;; Don't attach SSL to existing streams
-                            (string= (uri-scheme uri) "https"))
-                       #+dexador-no-ssl
-                       (error "SSL not supported. Remove :dexador-no-ssl from *features* to enable SSL.")
-                       #-dexador-no-ssl
-                       (cl+ssl:make-ssl-client-stream stream
-                                                      :certificate ssl-cert-file
-                                                      :key ssl-key-file
-                                                      :password ssl-key-password)
-                       stream))
+                       (make-new-connection uri)))
            (first-line-data
              (with-fast-output (buffer)
                (write-first-line method uri version buffer)))
@@ -305,7 +306,7 @@
                         (= status 0))
                (setf use-connection-pool nil
                      reusing-stream-p nil
-                     stream (usocket:socket-stream (make-new-connection uri)))
+                     stream (make-new-connection uri))
                (go retry))
              (when (and (member status '(301 302 303 307) :test #'=)
                         (member method '(:get :head) :test #'eq)
