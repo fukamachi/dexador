@@ -339,7 +339,9 @@
                        (return-from request
                          (apply #'request location-uri args))))))
              (if keep-alive
-                 (unless (equal (gethash "connection" response-headers) "close")
+                 (when (or (and (= version 1.0)
+                                (equalp (gethash "connection" response-headers) "keep-alive"))
+                           (not (equalp (gethash "connection" response-headers) "close")))
                    (push-connection (uri-authority uri) socket))
                  (usocket:socket-close socket))
              (let ((body (decompress-body (gethash "content-encoding" response-headers) body)))
@@ -352,5 +354,5 @@
                          response-headers
                          uri
                          (when (and keep-alive
-                                    (not (equal (gethash "connection" response-headers) "close")))
+                                    (not (equalp (gethash "connection" response-headers) "close")))
                            socket))))))))))
