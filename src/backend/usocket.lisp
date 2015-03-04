@@ -153,7 +153,8 @@
                     (typecase val
                       (pathname (with-open-file (in val)
                                   (file-length in)))
-                      (string (length val))
+                      (string (length (the octets (babel:string-to-octets val))))
+                      (symbol (length (the octets (babel:string-to-octets (princ-to-string val)))))
                       (otherwise (length (princ-to-string val))))
                     2))
        2 boundary-length 2 2)))
@@ -262,7 +263,7 @@
                       (null)
                       (string
                        (write-header* :content-type "text/plain")
-                       (write-header* :content-length (length content)))
+                       (write-header* :content-length (length (babel:string-to-octets content))))
                       (pathname
                        (write-header* :content-type (mimes:mime content))
                        (if-let ((content-length (assoc :content-length headers :test #'string-equal)))
