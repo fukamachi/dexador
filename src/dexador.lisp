@@ -8,8 +8,7 @@
                 :request)
   (:import-from :dexador.connection-cache
                 :*connection-pool*
-                :make-connection-pool
-                :*reuse-interval*)
+                :make-connection-pool)
   (:import-from :dexador.util
                 :*default-timeout*)
   (:export :request
@@ -20,8 +19,7 @@
            :delete
            :*default-timeout*
            :*connection-pool*
-           :make-connection-pool
-           :*reuse-interval*))
+           :make-connection-pool))
 (in-package :dexador)
 
 (defun get (uri &rest args

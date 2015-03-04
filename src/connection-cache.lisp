@@ -4,7 +4,6 @@
   (:import-from :bordeaux-threads
                 :current-thread)
   (:export :*connection-pool*
-           :*reuse-interval*
            :make-connection-pool
            :steal-connection
            :push-connection))
@@ -13,8 +12,6 @@
 (defparameter *connection-pool* nil)
 
 (defvar *threads-connection-pool* nil)
-
-(defvar *reuse-interval* 5)
 
 (defun make-connection-pool ()
   (make-hash-table :test 'equal))
@@ -48,9 +45,7 @@
          (conn (gethash host-port *connection-pool*)))
     (when conn
       (remhash host-port *connection-pool*)
-      (if (<= (- (get-universal-time) (car conn)) *reuse-interval*)
-          (cdr conn)
-          nil))))
+      (cdr conn))))
 
 (defun push-connection (host-port socket)
   (let ((*connection-pool* (get-connection-pool)))

@@ -81,8 +81,6 @@ You can overwrite the default User-Agent header by simply specifying "User-Agent
 
 Dexador reuses a connection by default. As it skips a TCP handshake, it would be much faster when you send requests to the same host continuously.
 
-The interval to reuse the connection can be configured with `*reuse-interval*`. The default value is `5` (sec).
-
 ## Functions
 
 All functions take similar arguments.
