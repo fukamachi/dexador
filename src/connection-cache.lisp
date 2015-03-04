@@ -48,7 +48,7 @@
          (conn (gethash host-port *connection-pool*)))
     (when conn
       (remhash host-port *connection-pool*)
-      (if (<= (- (car conn) (get-universal-time)) *reuse-interval*)
+      (if (<= (- (get-universal-time) (car conn)) *reuse-interval*)
           (cdr conn)
           nil))))
 
