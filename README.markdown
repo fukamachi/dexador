@@ -108,8 +108,8 @@ All functions take similar arguments.
   - A flag for suppressing auto-decoding of the response body.
 - `ssl-key-file`, `ssl-cert-file`, `ssl-key-password`
   - for HTTPS connection
-- `socket`
-  - The socket to send an HTTP request. This is the way to reuse a connection and commonly used with `:keep-alive T`.
+- `stream`
+  - The stream to write an HTTP request. This is the way to reuse a connection and commonly used with `:keep-alive T`.
 - `verbose` (boolean)
   - This option is for debugging. If this is `T`, it dumps the HTTP request headers.
 
@@ -118,12 +118,12 @@ All functions take similar arguments.
 ```common-lisp
 (dex:request uri &key method version content headers timeout keep-alive max-redirects
                    ssl-key-file ssl-cert-file ssl-key-password
-                   socket verbose)
+                   stream verbose)
 ;=> body
 ;   status
 ;   response-headers
 ;   uri
-;   socket
+;   stream
 ```
 
 Send an HTTP request to `uri`.
@@ -133,7 +133,7 @@ Send an HTTP request to `uri`.
 ```common-lisp
 (dex:get uri &key version headers keep-alive timeout max-redirects force-binary
                ssl-key-file ssl-cert-file ssl-key-password
-               socket verbose)
+               stream verbose)
 ```
 
 ### \[Function\] post
@@ -141,7 +141,7 @@ Send an HTTP request to `uri`.
 ```common-lisp
 (dex:post uri &key version headers content keep-alive timeout force-binary
                 ssl-key-file ssl-cert-file ssl-key-password
-                socket verbose)
+                stream verbose)
 ```
 
 ### \[Function\] head
@@ -149,7 +149,7 @@ Send an HTTP request to `uri`.
 ```common-lisp
 (dex:head uri &key version headers timeout max-redirects force-binary
                 ssl-key-file ssl-cert-file ssl-key-password
-                socket verbose)
+                stream verbose)
 ```
 
 ### \[Function\] put
@@ -157,7 +157,7 @@ Send an HTTP request to `uri`.
 ```common-lisp
 (dex:put uri &key version headers content keep-alive timeout force-binary
                ssl-key-file ssl-cert-file ssl-key-password
-               socket verbose)
+               stream verbose)
 ```
 
 ### \[Function\] delete
@@ -165,7 +165,7 @@ Send an HTTP request to `uri`.
 ```common-lisp
 (dex:delete uri &key version headers keep-alive timeout force-binary
                   ssl-key-file ssl-cert-file ssl-key-password
-                  socket verbose)
+                  stream verbose)
 ```
 
 ## Author

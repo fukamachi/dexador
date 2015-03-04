@@ -197,7 +197,7 @@
                             (timeout *default-timeout*) (keep-alive t) (use-connection-pool t)
                             (max-redirects 5)
                             ssl-key-file ssl-cert-file ssl-key-password
-                            socket verbose
+                            stream verbose
                             force-binary)
   (declare (ignorable ssl-key-file ssl-cert-file ssl-key-password))
   (flet ((make-new-connection (uri)
@@ -217,14 +217,14 @@
            (content (if form-urlencoded-p
                         (quri:url-encode-params content)
                         content))
-           (socket (or socket
+           (stream (or stream
                        (and use-connection-pool
                             (steal-connection (uri-authority uri)))))
-           (reusing-socket-p (not (null socket)))
-           (socket (or socket
-                       (make-new-connection uri)))
-           (stream (usocket:socket-stream socket))
-           (stream (if (string= (uri-scheme uri) "https")
+           (reusing-stream-p (not (null stream)))
+           (stream (or stream
+                       (usocket:socket-stream (make-new-connection uri))))
+           (stream (if (and (not reusing-stream-p) ;; Don't attach SSL to existing streams
+                            (string= (uri-scheme uri) "https"))
                        #+dexador-no-ssl
                        (error "SSL not supported. Remove :dexador-no-ssl from *features* to enable SSL.")
                        #-dexador-no-ssl
@@ -301,12 +301,11 @@
              (read-response stream (not (eq method :head)))
            (let ((status (http-status http))
                  (response-headers (http-headers http)))
-             (when (and reusing-socket-p
+             (when (and reusing-stream-p
                         (= status 0))
                (setf use-connection-pool nil
-                     reusing-socket-p nil
-                     socket (make-new-connection uri)
-                     stream (usocket:socket-stream socket))
+                     reusing-stream-p nil
+                     stream (usocket:socket-stream (make-new-connection uri)))
                (go retry))
              (when (and (member status '(301 302 303 307) :test #'=)
                         (member method '(:get :head) :test #'eq)
@@ -331,7 +330,7 @@
                          (decf max-redirects)
                          (go start-reading)))
                      (progn
-                       (usocket:socket-close socket)
+                       (ignore-errors (close stream))
                        (setf (getf args :headers)
                              (nconc `((:host . ,(uri-host location-uri))) headers))
                        (setf (getf args :max-redirects)
@@ -342,8 +341,8 @@
                  (when (or (and (= version 1.0)
                                 (equalp (gethash "connection" response-headers) "keep-alive"))
                            (not (equalp (gethash "connection" response-headers) "close")))
-                   (push-connection (uri-authority uri) socket))
-                 (usocket:socket-close socket))
+                   (push-connection (uri-authority uri) stream))
+                 (ignore-errors (close stream)))
              (let ((body (decompress-body (gethash "content-encoding" response-headers) body)))
                (return-from request
                  (values (if force-binary
@@ -355,4 +354,4 @@
                          uri
                          (when (and keep-alive
                                     (not (equalp (gethash "connection" response-headers) "close")))
-                           socket))))))))))
+                           stream))))))))))
