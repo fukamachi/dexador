@@ -215,7 +215,8 @@
                             ssl-key-file ssl-cert-file ssl-key-password
                             stream verbose
                             force-binary)
-  (declare (ignorable ssl-key-file ssl-cert-file ssl-key-password))
+  (declare (ignorable ssl-key-file ssl-cert-file ssl-key-password)
+           (type float version))
   (flet ((make-new-connection (uri)
            (let ((stream
                    (usocket:socket-stream
@@ -231,7 +232,14 @@
                                                 :certificate ssl-cert-file
                                                 :key ssl-key-file
                                                 :password ssl-key-password)
-                 stream))))
+                 stream)))
+         (finalize-connection (stream connection-header uri)
+           (if keep-alive
+               (when (or (and (= version 1.0)
+                              (equalp connection-header "keep-alive"))
+                         (not (equalp connection-header "close")))
+                 (push-connection (uri-authority uri) stream))
+               (ignore-errors (close stream)))))
     (let* ((uri (if (quri:uri-p uri)
                     uri
                     (quri:uri uri)))
@@ -348,19 +356,14 @@
                          (decf max-redirects)
                          (go start-reading)))
                      (progn
-                       (ignore-errors (close stream))
+                       (finalize-connection stream (gethash "connection" response-headers) uri)
                        (setf (getf args :headers)
                              (nconc `((:host . ,(uri-host location-uri))) headers))
                        (setf (getf args :max-redirects)
                              (1- max-redirects))
                        (return-from request
                          (apply #'request location-uri args))))))
-             (if keep-alive
-                 (when (or (and (= version 1.0)
-                                (equalp (gethash "connection" response-headers) "keep-alive"))
-                           (not (equalp (gethash "connection" response-headers) "close")))
-                   (push-connection (uri-authority uri) stream))
-                 (ignore-errors (close stream)))
+             (finalize-connection stream (gethash "connection" response-headers) uri)
              (let ((body (decompress-body (gethash "content-encoding" response-headers) body)))
                (return-from request
                  (values (if force-binary
