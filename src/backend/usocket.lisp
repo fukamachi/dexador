@@ -69,7 +69,7 @@
             (go read-cr))))
      eof)))
 
-(defun read-response (stream has-body)
+(defun read-response (stream has-body verbose)
   (let* ((http (make-http-response))
          (body (make-output-buffer))
          (header-finished-p nil)
@@ -90,15 +90,24 @@
                               :finish-callback
                               (lambda ()
                                 (setq finishedp t)))))
+    (when verbose
+      (format t "~&<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<~%"))
     (loop for buf of-type octets = (if (and header-finished-p
                                             content-length)
                                        (let ((buf (make-array content-length :element-type '(unsigned-byte 8))))
                                          (read-sequence buf stream)
                                          buf)
                                        (read-until-crlf stream))
-          do (funcall parser buf)
+          do (when (and verbose
+                        (not header-finished-p))
+               (map nil (lambda (byte)
+                          (princ (code-char byte)))
+                    buf))
+             (funcall parser buf)
           until (or finishedp
                     (zerop (length buf))))
+    (when verbose
+      (format t "~&<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<~%"))
     (values http (finish-output-buffer body))))
 
 (defun print-verbose-data (&rest data)
@@ -299,7 +308,7 @@
 
        start-reading
          (multiple-value-bind (http body)
-             (read-response stream (not (eq method :head)))
+             (read-response stream (not (eq method :head)) verbose)
            (let ((status (http-status http))
                  (response-headers (http-headers http)))
              (when (and reusing-stream-p
