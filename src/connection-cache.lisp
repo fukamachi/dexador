@@ -45,12 +45,11 @@
          (conn (gethash host-port *connection-pool*)))
     (when conn
       (remhash host-port *connection-pool*)
-      (cdr conn))))
+      conn)))
 
 (defun push-connection (host-port socket)
   (let ((*connection-pool* (get-connection-pool)))
     (setf (gethash host-port *connection-pool*)
-          (cons (get-universal-time)
-                socket))))
+          socket)))
 
 (initialize-threads-connection-pool)
