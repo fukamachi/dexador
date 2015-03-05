@@ -69,9 +69,11 @@
             (go read-cr))))
      eof)))
 
-(defun read-response (stream has-body verbose)
+(defun read-response (stream has-body collect-headers)
   (let* ((http (make-http-response))
-         (body (make-output-buffer))
+         (body-data (make-output-buffer))
+         (headers-data (and collect-headers
+                            (make-output-buffer)))
          (header-finished-p nil)
          (finishedp nil)
          (content-length nil)
@@ -86,37 +88,42 @@
                                   (setq finishedp t)))
                               :body-callback
                               (lambda (data start end)
-                                (fast-write-sequence data body start end))
+                                (fast-write-sequence data body-data start end))
                               :finish-callback
                               (lambda ()
                                 (setq finishedp t)))))
-    (when verbose
-      (format t "~&<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<~%"))
     (loop for buf of-type octets = (if (and header-finished-p
                                             content-length)
                                        (let ((buf (make-array content-length :element-type '(unsigned-byte 8))))
                                          (read-sequence buf stream)
                                          buf)
                                        (read-until-crlf stream))
-          do (when (and verbose
+          do (when (and collect-headers
                         (not header-finished-p))
-               (map nil (lambda (byte)
-                          (princ (code-char byte)))
-                    buf))
+               (fast-write-sequence buf headers-data))
              (funcall parser buf)
           until (or finishedp
                     (zerop (length buf))))
-    (when verbose
-      (format t "~&<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<~%"))
-    (values http (finish-output-buffer body))))
+    (values http
+            (finish-output-buffer body-data)
+            (and collect-headers
+                 (finish-output-buffer headers-data)))))
 
-(defun print-verbose-data (&rest data)
-  (format t "~&>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>~%")
-  (dolist (d data)
-    (map nil (lambda (byte)
-               (princ (code-char byte)))
-         d))
-  (format t "~&>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>~%"))
+(defun print-verbose-data (direction &rest data)
+  (flet ((boundary-line ()
+           (let ((char (ecase direction
+                         (:incoming #\<)
+                         (:outgoing #\>))))
+             (fresh-line)
+             (dotimes (i 50)
+               (write-char char))
+             (fresh-line))))
+    (boundary-line)
+    (dolist (d data)
+      (map nil (lambda (byte)
+                 (princ (code-char byte)))
+           d))
+    (boundary-line)))
 
 (defun decompress-body (content-encoding body)
   (unless content-encoding
@@ -293,8 +300,6 @@
          (write-sequence first-line-data stream)
          (write-sequence headers-data stream)
          (force-output stream)
-         (when verbose
-           (print-verbose-data first-line-data headers-data))
 
          ;; Sending the content
          (etypecase content
@@ -307,7 +312,7 @@
          (force-output stream)
 
        start-reading
-         (multiple-value-bind (http body)
+         (multiple-value-bind (http body response-headers-data)
              (read-response stream (not (eq method :head)) verbose)
            (let ((status (http-status http))
                  (response-headers (http-headers http)))
@@ -317,6 +322,9 @@
                      reusing-stream-p nil
                      stream (make-new-connection uri))
                (go retry))
+             (when verbose
+               (print-verbose-data :outgoing first-line-data headers-data)
+               (print-verbose-data :incoming response-headers-data))
              (when (and (member status '(301 302 303 307) :test #'=)
                         (member method '(:get :head) :test #'eq)
                         (gethash "location" response-headers))
@@ -333,7 +341,7 @@
                                  (with-fast-output (buffer)
                                    (write-first-line method location-uri version buffer))))
                            (when verbose
-                             (print-verbose-data next-first-line-data headers-data))
+                             (print-verbose-data :outgoing next-first-line-data headers-data))
                            (write-sequence next-first-line-data stream))
                          (write-sequence headers-data stream)
                          (force-output stream)
