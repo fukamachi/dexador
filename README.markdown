@@ -8,6 +8,12 @@ Dexador is yet another HTTP client for Common Lisp with neat APIs and connection
 
 This software is still ALPHA quality. The APIs will be likely to change.
 
+## Is it fast?
+
+![Benchmark graph](images/benchmark.png)
+
+See [Benchmark](#benchmark) for the detail.
+
 ## Usage
 
 ```common-lisp
@@ -164,6 +170,46 @@ Send an HTTP request to `uri`.
 (dex:delete uri &key version headers keep-alive timeout force-binary
                   ssl-key-file ssl-cert-file ssl-key-password
                   stream verbose)
+```
+
+## Benchmark
+
+![Benchmark graph](images/benchmark.png)
+
+* Server
+  * Sakura VPS 1GB
+  * nginx 1.2.7, KeepAlive On
+* Client
+  * MacBook Pro OS X Yosemite (CPU: 3GHz Intel Core i7, Memory: 8GB)
+  * SBCL 1.2.9
+* Downloads an HTML file (181 bytes).
+
+### Drakma
+
+```
+(time (dotimes (i 30) (drakma:http-request "http://files.8arrow.org/181B.html")))
+Evaluation took:
+  1.012 seconds of real time
+  0.174742 seconds of total run time (0.148141 user, 0.026601 system)
+  17.29% CPU
+  1,683 forms interpreted
+  500 lambdas converted
+  3,027,928,949 processor cycles
+  29,416,656 bytes consed
+```
+
+### Dexador
+
+```
+(time (dotimes (i 30) (dex:get "http://files.8arrow.org/181B.html")))
+Evaluation took:
+  0.499 seconds of real time
+  0.028057 seconds of total run time (0.019234 user, 0.008823 system)
+  5.61% CPU
+  56 forms interpreted
+  16 lambdas converted
+  1,494,851,690 processor cycles
+  1,472,992 bytes consed
 ```
 
 ## Author
