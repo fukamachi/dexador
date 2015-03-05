@@ -12,6 +12,10 @@ This software is still ALPHA quality. The APIs will be likely to change.
 
 ![Benchmark graph](images/benchmark.png)
 
+It's 2 times faster than [Drakma](http://weitz.de/drakma/).
+
+Why the difference though both libraries are built on top of usocket? Because Dexador reuses connections implicitly and no need to establish a TCP connection every time. As it is a quite general use case to send HTTP requests to the same host many times, the connection-pooling would work in various applications.
+
 See [Benchmark](#benchmark) for the detail.
 
 ## Usage
