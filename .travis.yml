@@ -11,6 +11,7 @@ install:
 
 before_script:
   - git clone https://github.com/fukamachi/fast-http ~/lisp/fast-http
+  - git clone https://github.com/fukamachi/quri ~/lisp/quri
   - git clone https://github.com/fukamachi/cl-cookie ~/lisp/cl-cookie
 
 script:
