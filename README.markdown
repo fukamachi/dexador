@@ -61,6 +61,64 @@ If the server reports that the requested page has moved to a different location 
 
 You can limit the count of redirection by specifying `:max-redirects` with an integer. The default value is `5`.
 
+### Using cookies
+
+Dexador adopts [cl-cookie](https://github.com/fukamachi/cl-cookie) for its cookie management. All functions takes a cookie-jar instance at `:cookie-jar`.
+
+```common-lisp
+(defvar *cookie-jar* (cl-cookie:make-cookie-jar))
+
+(dex:head "https://mixi.jp" :cookie-jar *cookie-jar* :verbose t)
+;-> >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+;   HEAD / HTTP/1.1
+;   User-Agent: Dexador/0.1 (SBCL 1.2.9); Darwin; 14.1.0
+;   Host: mixi.jp
+;   Accept: */*
+;   
+;   >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+;   <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+;   HTTP/1.1 200 OK
+;   Date: Tue, 10 Mar 2015 10:16:29 GMT
+;   Server: Apache
+;   X-Dealer: 152151
+;   X-XRDS-Location: https://mixi.jp/xrds.pl
+;   Cache-Control: no-cache
+;   Pragma: no-cache
+;   Vary: User-Agent
+;   Content-Type: text/html; charset=EUC-JP
+;   Set-Cookie: _auid=9d47ca5a00ce4980c41511beb2626fd4; domain=.mixi.jp; path=/; expires=Thu, 09-Mar-2017 10:16:29 GMT
+;   Set-Cookie: _lcp=8ee4121c9866435007fff2c90dc31a4d; domain=.mixi.jp; expires=Wed, 11-Mar-2015 10:16:29 GMT
+;   X-Content-Type-Options: nosniff
+;   
+;   <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+
+;; Again
+(dex:head "https://mixi.jp" :cookie-jar *cookie-jar* :verbose t)
+;-> >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+;   HEAD / HTTP/1.1
+;   User-Agent: Dexador/0.1 (SBCL 1.2.9); Darwin; 14.1.0
+;   Host: mixi.jp
+;   Accept: */*
+;   Cookie: _auid=b878756ed71a0ed5bcf527e324c78f8c; _lcp=8ee4121c9866435007fff2c90dc31a4d
+;   
+;   >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+;   <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+;   HTTP/1.1 200 OK
+;   Date: Tue, 10 Mar 2015 10:16:59 GMT
+;   Server: Apache
+;   X-Dealer: 152146
+;   X-XRDS-Location: https://mixi.jp/xrds.pl
+;   Cache-Control: no-cache
+;   Pragma: no-cache
+;   Vary: User-Agent
+;   Content-Type: text/html; charset=EUC-JP
+;   Set-Cookie: _auid=b878756ed71a0ed5bcf527e324c78f8c; domain=.mixi.jp; path=/; expires=Thu, 09-Mar-2017 10:16:59 GMT
+;   Set-Cookie: _lcp=8ee4121c9866435007fff2c90dc31a4d; domain=.mixi.jp; expires=Wed, 11-Mar-2015 10:16:59 GMT
+;   X-Content-Type-Options: nosniff
+;   
+;   <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+```
+
 ### Faking a User-Agent header
 
 You can overwrite the default User-Agent header by simply specifying "User-Agent" in `:headers`.
@@ -104,6 +162,8 @@ All functions take similar arguments.
   - The body of the request.
 - `headers` (alist)
   - The headers of the request. If the value of a pair is `NIL`, the header won't be sent. You can overwrite the default headers (Host, User-Agent and Accept) by this with the same header name.
+- `cookie-jar` (cookie-jar of [cl-cookie](https://github.com/fukamachi/cl-cookie))
+  - A cookie jar object.
 - `timeout` (fixnum)
   - The seconds to timeout of the HTTP connection. The default is `10`, the value of `*default-timeout*`.
 - `keep-alive` (boolean)
@@ -124,7 +184,7 @@ All functions take similar arguments.
 ### \[Function\] request
 
 ```common-lisp
-(dex:request uri &key method version content headers timeout keep-alive max-redirects
+(dex:request uri &key method version content headers cookie-jar timeout keep-alive max-redirects
                    ssl-key-file ssl-cert-file ssl-key-password
                    stream verbose)
 ;=> body
@@ -139,7 +199,7 @@ Send an HTTP request to `uri`.
 ### \[Function\] get
 
 ```common-lisp
-(dex:get uri &key version headers keep-alive timeout max-redirects force-binary
+(dex:get uri &key version headers cookie-jar keep-alive timeout max-redirects force-binary
                ssl-key-file ssl-cert-file ssl-key-password
                stream verbose)
 ```
@@ -147,7 +207,7 @@ Send an HTTP request to `uri`.
 ### \[Function\] post
 
 ```common-lisp
-(dex:post uri &key version headers content keep-alive timeout force-binary
+(dex:post uri &key version headers content cookie-jar keep-alive timeout force-binary
                 ssl-key-file ssl-cert-file ssl-key-password
                 stream verbose)
 ```
@@ -155,7 +215,7 @@ Send an HTTP request to `uri`.
 ### \[Function\] head
 
 ```common-lisp
-(dex:head uri &key version headers timeout max-redirects force-binary
+(dex:head uri &key version headers cookie-jar timeout max-redirects force-binary
                 ssl-key-file ssl-cert-file ssl-key-password
                 stream verbose)
 ```
@@ -163,7 +223,7 @@ Send an HTTP request to `uri`.
 ### \[Function\] put
 
 ```common-lisp
-(dex:put uri &key version headers content keep-alive timeout force-binary
+(dex:put uri &key version headers content cookie-jar keep-alive timeout force-binary
                ssl-key-file ssl-cert-file ssl-key-password
                stream verbose)
 ```
@@ -171,7 +231,7 @@ Send an HTTP request to `uri`.
 ### \[Function\] delete
 
 ```common-lisp
-(dex:delete uri &key version headers keep-alive timeout force-binary
+(dex:delete uri &key version headers cookie-jar keep-alive timeout force-binary
                   ssl-key-file ssl-cert-file ssl-key-password
                   stream verbose)
 ```

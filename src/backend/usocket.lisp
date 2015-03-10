@@ -23,10 +23,16 @@
                 :fast-write-byte)
   (:import-from :trivial-mimes
                 :mime)
+  (:import-from :cl-cookie
+                :merge-cookies
+                :parse-set-cookie-header
+                :cookie-jar-host-cookies
+                :write-cookie-header)
   (:import-from :quri
                 :uri-p
                 :uri-host
                 :uri-port
+                :uri-path
                 :uri-authority
                 :uri-scheme
                 :url-encode-params)
@@ -38,7 +44,8 @@
                 :make-ssl-client-stream)
   (:import-from :alexandria
                 :copy-stream
-                :if-let)
+                :if-let
+                :when-let)
   (:export :request))
 (in-package :dexador.backend.usocket)
 
@@ -210,6 +217,7 @@
 (defun-careful request (uri &rest args
                             &key (method :get) (version 1.1)
                             content headers
+                            cookie-jar
                             (timeout *default-timeout*) (keep-alive t) (use-connection-pool t)
                             (max-redirects 5)
                             ssl-key-file ssl-cert-file ssl-key-password
@@ -295,6 +303,16 @@
                          (write-header :content-length (cdr content-length))
                          (with-open-file (in content)
                            (write-header :content-length (file-length in))))))))
+                 (when cookie-jar
+                   (let ((cookies (cookie-jar-host-cookies cookie-jar (uri-host uri)
+                                                           :securep (string= (uri-scheme uri) "https")
+                                                           :path (or (uri-path uri) "/"))))
+                     (when cookies
+                       (fast-write-sequence #.(ascii-string-to-octets "Cookie: ") buffer)
+                       (fast-write-sequence
+                        (ascii-string-to-octets (write-cookie-header cookies))
+                        buffer)
+                       (fast-write-sequence +crlf+ buffer))))
 
                  ;; Custom headers
                  (loop for (name . value) in headers
@@ -364,6 +382,11 @@
                        (return-from request
                          (apply #'request location-uri args))))))
              (finalize-connection stream (gethash "connection" response-headers) uri)
+             (when cookie-jar
+               (when-let (set-cookies (append (gethash "set-cookie" response-headers)
+                                              (gethash "set-cookie2" response-headers)))
+                 (merge-cookies cookie-jar
+                                (mapcar #'parse-set-cookie-header set-cookies))))
              (let ((body (decompress-body (gethash "content-encoding" response-headers) body)))
                (return-from request
                  (values (if force-binary

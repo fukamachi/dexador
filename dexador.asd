@@ -22,6 +22,7 @@
                :fast-io
                :babel
                :cl-ppcre
+               :cl-cookie
                :trivial-mimes
                :chipz
                #-dexador-no-ssl :cl+ssl
