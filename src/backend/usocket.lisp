@@ -278,7 +278,7 @@
                             (write-header name value)))))
                (with-header-output (buffer)
                  (write-header* :user-agent #.*default-user-agent*)
-                 (write-header* :host (uri-host uri))
+                 (write-header* :host (uri-authority uri))
                  (write-header* :accept "*/*")
                  (when (and keep-alive
                             (= version 1.0))
