@@ -4,6 +4,7 @@
   (:import-from :bordeaux-threads
                 :current-thread)
   (:export :*connection-pool*
+           :*use-connection-pool*
            :make-connection-pool
            :steal-connection
            :push-connection))
@@ -12,6 +13,8 @@
 (defparameter *connection-pool* nil)
 
 (defvar *threads-connection-pool* nil)
+
+(defvar *use-connection-pool* t)
 
 (defun make-connection-pool ()
   (make-hash-table :test 'equal))
@@ -41,15 +44,17 @@
       *threads-connection-pool*))
 
 (defun steal-connection (host-port)
-  (let* ((*connection-pool* (get-connection-pool))
-         (conn (gethash host-port *connection-pool*)))
-    (when conn
-      (remhash host-port *connection-pool*)
-      conn)))
+  (when *use-connection-pool*
+    (let* ((*connection-pool* (get-connection-pool))
+           (conn (gethash host-port *connection-pool*)))
+      (when conn
+        (remhash host-port *connection-pool*)
+        conn))))
 
 (defun push-connection (host-port socket)
-  (let ((*connection-pool* (get-connection-pool)))
-    (setf (gethash host-port *connection-pool*)
-          socket)))
+  (when *use-connection-pool*
+    (let ((*connection-pool* (get-connection-pool)))
+      (setf (gethash host-port *connection-pool*)
+            socket))))
 
 (initialize-threads-connection-pool)

@@ -8,6 +8,7 @@
                 :request)
   (:import-from :dexador.connection-cache
                 :*connection-pool*
+                :*use-connection-pool*
                 :make-connection-pool)
   (:import-from :dexador.util
                 :*default-timeout*)
@@ -19,6 +20,7 @@
            :delete
            :*default-timeout*
            :*connection-pool*
+           :*use-connection-pool*
            :make-connection-pool))
 (in-package :dexador)
 
