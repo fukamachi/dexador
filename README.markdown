@@ -119,6 +119,20 @@ Dexador adopts [cl-cookie](https://github.com/fukamachi/cl-cookie) for its cooki
 ;   <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
 ```
 
+### Basic Authorization
+
+```common-lisp
+(dex:head "http://www.hatena.ne.jp/" :basic-auth '("nitro_idiot" . "password") :verbose t)
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+HEAD / HTTP/1.1
+User-Agent: Dexador/0.1 (SBCL 1.2.9); Darwin; 14.1.0
+Host: www.hatena.ne.jp
+Accept: */*
+Authorization: Basic bml0cm9faWRpb3Q6cGFzc3dvcmQ=
+
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+```
+
 ### Faking a User-Agent header
 
 You can overwrite the default User-Agent header by simply specifying "User-Agent" in `:headers`.
@@ -162,6 +176,8 @@ All functions take similar arguments.
   - The body of the request.
 - `headers` (alist)
   - The headers of the request. If the value of a pair is `NIL`, the header won't be sent. You can overwrite the default headers (Host, User-Agent and Accept) by this with the same header name.
+- `basic-auth` (cons of username and password)
+  - Username and password for basic authorization. This is a cons having username at car and password at cdr. (e.g. `'("foo" . "bar")`)
 - `cookie-jar` (cookie-jar of [cl-cookie](https://github.com/fukamachi/cl-cookie))
   - A cookie jar object.
 - `timeout` (fixnum)

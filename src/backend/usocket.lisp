@@ -39,6 +39,8 @@
   (:import-from :chipz
                 :decompress
                 :make-dstate)
+  (:import-from :cl-base64
+                :string-to-base64-string)
   #-dexador-no-ssl
   (:import-from :cl+ssl
                 :make-ssl-client-stream)
@@ -217,6 +219,7 @@
 (defun-careful request (uri &rest args
                             &key (method :get) (version 1.1)
                             content headers
+                            basic-auth
                             cookie-jar
                             (timeout *default-timeout*) (keep-alive t) (use-connection-pool t)
                             (max-redirects 5)
@@ -283,6 +286,13 @@
                  (when (and keep-alive
                             (= version 1.0))
                    (write-header* :connection "keep-alive"))
+                 (when basic-auth
+                   (write-header* :authorization
+                                  (format nil "Basic ~A"
+                                          (string-to-base64-string
+                                           (format nil "~A:~A"
+                                                   (car basic-auth)
+                                                   (cdr basic-auth))))))
                  (cond
                    (multipart-p
                     (write-header* :content-type (format nil "multipart/form-data; boundary=~A" boundary))
