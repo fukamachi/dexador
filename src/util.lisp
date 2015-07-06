@@ -9,7 +9,6 @@
                 :uri-path
                 :uri-query)
   (:export :*default-timeout*
-           :defun-insane
            :defun-speedy
            :defun-careful
            :octets
@@ -25,16 +24,8 @@
 (defvar *default-timeout* 10)
 
 (eval-when (:compile-toplevel :load-toplevel :execute)
-  (defvar *insane-declaration* '(declare (optimize (speed 3) (safety 0) (space 0) (compilation-speed 0))))
   (defvar *speedy-declaration* '(declare (optimize (speed 3) (safety 0) (space 0) (compilation-speed 0))))
   (defvar *careful-declaration* '(declare (optimize (speed 3) (safety 2)))))
-
-(defmacro defun-insane (name lambda-list &body body)
-  `(progn
-     (declaim (inline ,name))
-     (defun ,name ,lambda-list
-       ,*insane-declaration*
-       ,@body)))
 
 (defmacro defun-speedy (name lambda-list &body body)
   `(progn
