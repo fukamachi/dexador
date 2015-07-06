@@ -6,7 +6,7 @@
                 :subtest-app))
 (in-package :dexador-test)
 
-(plan 5)
+(plan 6)
 
 (subtest-app "normal case"
     (lambda (env)
@@ -145,5 +145,11 @@ body: \"Within a couple weeks of learning Lisp I found programming in any other 
     (is (length (cl-cookie:cookie-jar-cookies cookie-jar)) 0 "0 cookies")
     (dex:head "https://mixi.jp" :cookie-jar cookie-jar)
     (is (length (cl-cookie:cookie-jar-cookies cookie-jar)) 2 "2 cookies")))
+
+(subtest-app "verbose"
+    (lambda (env)
+      (declare (ignore env))
+      '(200 () ("ok")))
+  (ok (dex:get "http://localhost:4242/" :verbose t)))
 
 (finalize)
