@@ -337,96 +337,109 @@
                                              :content-type :content-length) :test #'string-equal)
                          do (write-header name value))
                  (fast-write-sequence +crlf+ buffer)))))
-      (tagbody
-       retry
-         (write-sequence first-line-data stream)
-         (write-sequence headers-data stream)
-         (force-output stream)
+      (macrolet ((with-retrying (&body body)
+                   `(if reusing-stream-p
+                        (handler-bind ((error
+                                         (lambda (e)
+                                           (declare (ignore e))
+                                           (when reusing-stream-p
+                                             (setf use-connection-pool nil
+                                                   reusing-stream-p nil
+                                                   stream (make-new-connection uri))
+                                             (go retry)))))
+                          ,@body)
+                        (progn ,@body))))
+        (tagbody
+         retry
+           (write-sequence first-line-data stream)
+           (write-sequence headers-data stream)
+           (with-retrying (force-output stream))
 
-         ;; Sending the content
-         (etypecase content
-           (null)
-           (string (write-sequence (babel:string-to-octets content) stream))
-           (pathname (with-open-file (in content :element-type '(unsigned-byte 8))
-                       (copy-stream in stream)))
-           (cons
-            (write-multipart-content content boundary stream)))
-         (force-output stream)
+           ;; Sending the content
+           (when content
+             (etypecase content
+               (string (write-sequence (babel:string-to-octets content) stream))
+               (pathname (with-open-file (in content :element-type '(unsigned-byte 8))
+                           (copy-stream in stream)))
+               (cons
+                (write-multipart-content content boundary stream)))
+             (with-retrying (force-output stream)))
 
-       start-reading
-         (multiple-value-bind (http body response-headers-data)
-             (read-response stream (not (eq method :head)) verbose)
-           (let ((status (http-status http))
-                 (response-headers (http-headers http)))
-             (when (and reusing-stream-p
-                        (= status 0))
-               (setf use-connection-pool nil
-                     reusing-stream-p nil
-                     stream (make-new-connection uri))
-               (go retry))
-             (when verbose
-               (print-verbose-data :outgoing first-line-data headers-data)
-               (print-verbose-data :incoming response-headers-data))
-             (when (and (member status '(301 302 303 307) :test #'=)
-                        (member method '(:get :head) :test #'eq)
-                        (gethash "location" response-headers))
-               (let ((location-uri (quri:uri (gethash "location" response-headers))))
-                 (if (or (null (uri-host location-uri))
-                         (and (string= (uri-host location-uri)
-                                       (uri-host uri))
-                              (eql (uri-port location-uri)
-                                   (uri-port uri))))
-                     (progn
-                       (unless (= 0 max-redirects)
-                         (setq uri location-uri)
-                         (let ((next-first-line-data
-                                 (with-fast-output (buffer)
-                                   (write-first-line method location-uri version buffer))))
-                           (when verbose
-                             (print-verbose-data :outgoing next-first-line-data headers-data))
-                           (write-sequence next-first-line-data stream))
-                         (write-sequence headers-data stream)
-                         (force-output stream)
-                         (decf max-redirects)
-                         (go start-reading)))
-                     (progn
-                       (finalize-connection stream (gethash "connection" response-headers) uri)
-                       (setf (getf args :headers)
-                             (nconc `((:host . ,(uri-host location-uri))) headers))
-                       (setf (getf args :max-redirects)
-                             (1- max-redirects))
-                       (return-from request
-                         (apply #'request location-uri args))))))
-             (finalize-connection stream (gethash "connection" response-headers) uri)
-             (when cookie-jar
-               (when-let (set-cookies (append (gethash "set-cookie" response-headers)
-                                              (gethash "set-cookie2" response-headers)))
-                 (merge-cookies cookie-jar
-                                (mapcar #'parse-set-cookie-header set-cookies))))
-             (let ((body (decompress-body (gethash "content-encoding" response-headers) body)))
-               (setf body
-                     (if force-binary
-                         body
-                         (decode-body (gethash "content-type" response-headers)
-                                      body)))
-               ;; Raise an error when the HTTP response status code is 4xx or 50x.
-               (when (<= 400 status)
-                 (restart-case
-                     (error 'http-request-failed
-                            :body body
-                            :headers headers
-                            :uri uri
-                            :status status)
-                   (retry-request ()
-                     :report "Retry the same request."
-                     (go retry))
-                   (ignore-and-continue ()
-                     :report "Ignore the error and continue.")))
-               (return-from request
-                 (values body
-                         status
-                         response-headers
-                         uri
-                         (when (and keep-alive
-                                    (not (equalp (gethash "connection" response-headers) "close")))
-                           stream))))))))))
+         start-reading
+           (multiple-value-bind (http body response-headers-data)
+               (with-retrying
+                 (read-response stream (not (eq method :head)) verbose))
+             (let ((status (http-status http))
+                   (response-headers (http-headers http)))
+               (when (and reusing-stream-p
+                          (= status 0))
+                 (setf use-connection-pool nil
+                       reusing-stream-p nil
+                       stream (make-new-connection uri))
+                 (go retry))
+               (when verbose
+                 (print-verbose-data :outgoing first-line-data headers-data)
+                 (print-verbose-data :incoming response-headers-data))
+               (when (and (member status '(301 302 303 307) :test #'=)
+                          (member method '(:get :head) :test #'eq)
+                          (gethash "location" response-headers))
+                 (let ((location-uri (quri:uri (gethash "location" response-headers))))
+                   (if (or (null (uri-host location-uri))
+                           (and (string= (uri-host location-uri)
+                                         (uri-host uri))
+                                (eql (uri-port location-uri)
+                                     (uri-port uri))))
+                       (progn
+                         (unless (= 0 max-redirects)
+                           (setq uri location-uri)
+                           (let ((next-first-line-data
+                                   (with-fast-output (buffer)
+                                     (write-first-line method location-uri version buffer))))
+                             (when verbose
+                               (print-verbose-data :outgoing next-first-line-data headers-data))
+                             (write-sequence next-first-line-data stream))
+                           (write-sequence headers-data stream)
+                           (force-output stream)
+                           (decf max-redirects)
+                           (go start-reading)))
+                       (progn
+                         (finalize-connection stream (gethash "connection" response-headers) uri)
+                         (setf (getf args :headers)
+                               (nconc `((:host . ,(uri-host location-uri))) headers))
+                         (setf (getf args :max-redirects)
+                               (1- max-redirects))
+                         (return-from request
+                           (apply #'request location-uri args))))))
+               (finalize-connection stream (gethash "connection" response-headers) uri)
+               (when cookie-jar
+                 (when-let (set-cookies (append (gethash "set-cookie" response-headers)
+                                                (gethash "set-cookie2" response-headers)))
+                   (merge-cookies cookie-jar
+                                  (mapcar #'parse-set-cookie-header set-cookies))))
+               (let ((body (decompress-body (gethash "content-encoding" response-headers) body)))
+                 (setf body
+                       (if force-binary
+                           body
+                           (decode-body (gethash "content-type" response-headers)
+                                        body)))
+                 ;; Raise an error when the HTTP response status code is 4xx or 50x.
+                 (when (<= 400 status)
+                   (restart-case
+                       (error 'http-request-failed
+                              :body body
+                              :headers headers
+                              :uri uri
+                              :status status)
+                     (retry-request ()
+                       :report "Retry the same request."
+                       (go retry))
+                     (ignore-and-continue ()
+                       :report "Ignore the error and continue.")))
+                 (return-from request
+                   (values body
+                           status
+                           response-headers
+                           uri
+                           (when (and keep-alive
+                                      (not (equalp (gethash "connection" response-headers) "close")))
+                             stream)))))))))))

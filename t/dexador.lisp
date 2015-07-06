@@ -98,8 +98,7 @@
     (multiple-value-bind (body code headers)
         (dex:post "http://localhost:4242/"
                   :content '(("name" . "Eitaro")
-                             ("email" . "e.arrows@gmail.com"))
-                  :use-connection-pool nil)
+                             ("email" . "e.arrows@gmail.com")))
       (declare (ignore headers))
       (is code 200)
       (is body "name: Eitaro
@@ -109,8 +108,7 @@ email: e.arrows@gmail.com
     (multiple-value-bind (body code)
         (dex:post "http://localhost:4242/"
                   :content `(("title" . "Road to Lisp")
-                             ("body" . ,(asdf:system-relative-pathname :dexador #P"t/data/quote.txt")))
-                  :use-connection-pool nil)
+                             ("body" . ,(asdf:system-relative-pathname :dexador #P"t/data/quote.txt"))))
       (is code 200)
       (is body
           "title: Road to Lisp
@@ -120,8 +118,7 @@ body: \"Within a couple weeks of learning Lisp I found programming in any other 
   (subtest "upload"
     (multiple-value-bind (body code)
         (dex:post "http://localhost:4242/upload"
-                  :content (asdf:system-relative-pathname :dexador #P"t/data/quote.txt")
-                  :use-connection-pool nil)
+                  :content (asdf:system-relative-pathname :dexador #P"t/data/quote.txt"))
       (is code 200)
       (is body "\"Within a couple weeks of learning Lisp I found programming in any other language unbearably constraining.\" -- Paul Graham, Road to Lisp
 "))))
