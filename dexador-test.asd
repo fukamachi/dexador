@@ -13,6 +13,7 @@
   :license "MIT"
   :depends-on (:dexador
                :prove
+               :lack-request
                :clack-test
                :babel)
   :components ((:module "t"
