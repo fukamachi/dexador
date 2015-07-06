@@ -5,11 +5,19 @@
   (:shadow :get
            :delete)
   (:import-from :dexador.backend.usocket
-                :request)
+                :request
+                :retry-request
+                :ignore-and-continue)
   (:import-from :dexador.connection-cache
                 :*connection-pool*
                 :*use-connection-pool*
                 :make-connection-pool)
+  (:import-from :dexador.error
+                :http-request-failed
+                :response-body
+                :response-status
+                :response-headers
+                :request-uri)
   (:import-from :dexador.util
                 :*default-timeout*)
   (:export :request
@@ -21,7 +29,18 @@
            :*default-timeout*
            :*connection-pool*
            :*use-connection-pool*
-           :make-connection-pool))
+           :make-connection-pool
+
+           ;; Errors
+           :http-request-failed
+           :response-body
+           :response-status
+           :response-headers
+           :request-uri
+
+           ;; Restarts
+           :retry-request
+           :ignore-and-continue))
 (in-package :dexador)
 
 (defun get (uri &rest args

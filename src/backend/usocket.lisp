@@ -7,6 +7,8 @@
   (:import-from :dexador.connection-cache
                 :steal-connection
                 :push-connection)
+  (:import-from :dexador.error
+                :http-request-failed)
   (:import-from :usocket
                 :socket-connect
                 :socket-stream)
@@ -48,7 +50,11 @@
                 :copy-stream
                 :if-let
                 :when-let)
-  (:export :request))
+  (:export :request
+
+           ;; Restarts
+           :retry-request
+           :ignore-and-continue))
 (in-package :dexador.backend.usocket)
 
 (defun-speedy read-until-crlf (stream)
@@ -398,6 +404,19 @@
                  (merge-cookies cookie-jar
                                 (mapcar #'parse-set-cookie-header set-cookies))))
              (let ((body (decompress-body (gethash "content-encoding" response-headers) body)))
+               ;; Raise an error when the HTTP response status code is 4xx or 50x.
+               (when (<= 400 status)
+                 (restart-case
+                     (error 'http-request-failed
+                            :body body
+                            :headers headers
+                            :uri uri
+                            :status status)
+                   (retry-request ()
+                     :report "Retry the same request."
+                     (go retry))
+                   (ignore-and-continue ()
+                     :report "Ignore the error and continue.")))
                (return-from request
                  (values (if force-binary
                              body

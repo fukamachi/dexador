@@ -31,12 +31,13 @@
                :alexandria)
   :components ((:module "src"
                 :components
-                ((:file "dexador" :depends-on ("backend"))
+                ((:file "dexador" :depends-on ("backend" "error"))
                  (:file "encoding")
                  (:file "connection-cache")
+                 (:file "error")
                  (:file "util")
                  (:module "backend"
-                  :depends-on ("encoding" "connection-cache" "util")
+                  :depends-on ("encoding" "connection-cache" "error" "util")
                   :components
                   ((:file "usocket"))))))
   :description "Yet another HTTP client for Common Lisp"
