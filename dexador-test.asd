@@ -15,7 +15,8 @@
                :prove
                :lack-request
                :clack-test
-               :babel)
+               :babel
+               :cl-cookie)
   :components ((:module "t"
                 :components
                 ((:test-file "dexador"))))

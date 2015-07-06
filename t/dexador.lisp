@@ -6,7 +6,7 @@
                 :subtest-app))
 (in-package :dexador-test)
 
-(plan 4)
+(plan 5)
 
 (subtest-app "normal case"
     (lambda (env)
@@ -139,5 +139,11 @@ body: \"Within a couple weeks of learning Lisp I found programming in any other 
           "response status is 404")
       (is (dex:response-body e) "not found"
           "response body is \"not found\""))))
+
+(subtest "Using cookies"
+  (let ((cookie-jar (cl-cookie:make-cookie-jar)))
+    (is (length (cl-cookie:cookie-jar-cookies cookie-jar)) 0 "0 cookies")
+    (dex:head "https://mixi.jp" :cookie-jar cookie-jar)
+    (is (length (cl-cookie:cookie-jar-cookies cookie-jar)) 2 "2 cookies")))
 
 (finalize)
