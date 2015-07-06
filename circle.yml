@@ -14,9 +14,10 @@ dependencies:
   override:
     - git clone https://github.com/fukamachi/fast-http ~/lisp/fast-http
     - git clone https://github.com/fukamachi/quri ~/lisp/quri
+    - git clone https://github.com/fukamachi/cl-coveralls ~/lisp/cl-coveralls
     - git clone https://github.com/fukamachi/prove ~/lisp/prove
     - ros -l ~/lisp/prove/prove.asd install prove
 
 test:
   override:
-    - run-prove dexador-test.asd: {parallel: true}
+    - if [ "$CIRCLE_NODE_INDEX" = 0 ]; then COVERALLS=true run-prove dexador-test.asd; else run-prove dexador-test.asd; fi: {parallel: true}
