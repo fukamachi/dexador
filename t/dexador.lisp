@@ -11,12 +11,28 @@
 (subtest-app "normal case"
     (lambda (env)
       `(200 (:content-length ,(length (getf env :request-uri))) (,(getf env :request-uri))))
-  (multiple-value-bind (body code headers)
-      (dex:get "http://localhost:4242/foo"
-               :headers '((:x-foo . "ppp")))
-    (is code 200)
-    (is body "/foo")
-    (is (gethash "content-length" headers) 4)))
+  (subtest "GET"
+    (multiple-value-bind (body code headers)
+        (dex:get "http://localhost:4242/foo"
+                 :headers '((:x-foo . "ppp")))
+      (is code 200)
+      (is body "/foo")
+      (is (gethash "content-length" headers) 4)))
+  (subtest "HEAD"
+    (multiple-value-bind (body code)
+        (dex:head "http://localhost:4242/foo")
+      (is code 200)
+      (is body "")))
+  (subtest "PUT"
+    (multiple-value-bind (body code)
+        (dex:put "http://localhost:4242/foo")
+      (is code 200)
+      (is body "/foo")))
+  (subtest "DELETE"
+    (multiple-value-bind (body code)
+        (dex:delete "http://localhost:4242/foo")
+      (is code 200)
+      (is body "/foo"))))
 
 (subtest-app "redirection"
     (lambda (env)
@@ -113,15 +129,15 @@ body: \"Within a couple weeks of learning Lisp I found programming in any other 
     (lambda (env)
       (declare (ignore env))
       '(404 () ("not found")))
-  (ignore-errors
-   (handler-bind ((error
-                    (lambda (e)
-                      (is-type e 'dex:http-request-failed
-                               "Raise DEX:HTTP-REQUEST-FAILED error")
-                      (is (dex:response-status e) 404
-                          "response status is 404")
-                      (is (dex:response-body e) "not found"
-                          "response body is \"not found\""))))
-     (dex:get "http://localhost:4242/"))))
+  (handler-case
+      (progn
+        (dex:get "http://localhost:4242/")
+        (fail "Must raise an error DEX:HTTP-REQUEST-FAILED"))
+    (dex:http-request-failed (e)
+      (pass "Raise DEX:HTTP-REQUEST-FAILED error")
+      (is (dex:response-status e) 404
+          "response status is 404")
+      (is (dex:response-body e) "not found"
+          "response body is \"not found\""))))
 
 (finalize)
