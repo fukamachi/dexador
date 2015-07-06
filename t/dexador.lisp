@@ -6,7 +6,7 @@
                 :subtest-app))
 (in-package :dexador-test)
 
-(plan nil)
+(plan 4)
 
 (subtest-app "normal case"
     (lambda (env)
@@ -108,5 +108,20 @@ body: \"Within a couple weeks of learning Lisp I found programming in any other 
       (is code 200)
       (is body "\"Within a couple weeks of learning Lisp I found programming in any other language unbearably constraining.\" -- Paul Graham, Road to Lisp
 "))))
+
+(subtest-app "HTTP request failed"
+    (lambda (env)
+      (declare (ignore env))
+      '(404 () ("not found")))
+  (ignore-errors
+   (handler-bind ((error
+                    (lambda (e)
+                      (is-type e 'dex:http-request-failed
+                               "Raise DEX:HTTP-REQUEST-FAILED error")
+                      (is (dex:response-status e) 404
+                          "response status is 404")
+                      (is (dex:response-body e) "not found"
+                          "response body is \"not found\""))))
+     (dex:get "http://localhost:4242/"))))
 
 (finalize)

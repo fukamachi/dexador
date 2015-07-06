@@ -404,6 +404,11 @@
                  (merge-cookies cookie-jar
                                 (mapcar #'parse-set-cookie-header set-cookies))))
              (let ((body (decompress-body (gethash "content-encoding" response-headers) body)))
+               (setf body
+                     (if force-binary
+                         body
+                         (decode-body (gethash "content-type" response-headers)
+                                      body)))
                ;; Raise an error when the HTTP response status code is 4xx or 50x.
                (when (<= 400 status)
                  (restart-case
@@ -418,10 +423,7 @@
                    (ignore-and-continue ()
                      :report "Ignore the error and continue.")))
                (return-from request
-                 (values (if force-binary
-                             body
-                             (decode-body (gethash "content-type" response-headers)
-                                          body))
+                 (values body
                          status
                          response-headers
                          uri
