@@ -98,7 +98,8 @@
     (multiple-value-bind (body code headers)
         (dex:post "http://localhost:4242/"
                   :content '(("name" . "Eitaro")
-                             ("email" . "e.arrows@gmail.com")))
+                             ("email" . "e.arrows@gmail.com"))
+                  :use-connection-pool nil)
       (declare (ignore headers))
       (is code 200)
       (is body "name: Eitaro
@@ -144,7 +145,8 @@ body: \"Within a couple weeks of learning Lisp I found programming in any other 
   (let ((cookie-jar (cl-cookie:make-cookie-jar)))
     (is (length (cl-cookie:cookie-jar-cookies cookie-jar)) 0 "0 cookies")
     (dex:head "https://mixi.jp" :cookie-jar cookie-jar)
-    (is (length (cl-cookie:cookie-jar-cookies cookie-jar)) 2 "2 cookies")))
+    (is (length (cl-cookie:cookie-jar-cookies cookie-jar)) 2 "2 cookies")
+    (dex:head "https://mixi.jp" :cookie-jar cookie-jar)))
 
 (subtest-app "verbose"
     (lambda (env)
