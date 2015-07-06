@@ -1,6 +1,7 @@
 # Dexador
 
 [![Build Status](https://img.shields.io/circleci/project/fukamachi/dexador/master.svg)](https://circleci.com/gh/fukamachi/dexador)
+[![Coverage Status](https://coveralls.io/repos/fukamachi/dexador/badge.svg?branch=master)](https://coveralls.io/r/fukamachi/dexador)
 
 Dexador is yet another HTTP client for Common Lisp with neat APIs and connection-pooling.
 
