@@ -1,0 +1,22 @@
+machine:
+  environment:
+    PATH: ~/.roswell/bin:$PATH
+
+dependencies:
+  pre:
+    - curl -L https://raw.githubusercontent.com/snmsts/roswell/master/scripts/install-for-ci.sh | sh
+    - case $CIRCLE_NODE_INDEX in
+        0) ros config set default.lisp sbcl-bin ;;
+        1) ros install ccl-bin;
+           ros config set default.lisp ccl-bin ;;
+      esac
+    - ros run -- --version
+  override:
+    - git clone https://github.com/fukamachi/fast-http ~/lisp/fast-http
+    - git clone https://github.com/fukamachi/quri ~/lisp/quri
+    - git clone https://github.com/fukamachi/prove ~/lisp/prove
+    - ros -l ~/lisp/prove/prove.asd install prove
+
+test:
+  override:
+    - run-prove dexador-test.asd: {parallel: true}
