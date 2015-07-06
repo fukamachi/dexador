@@ -92,7 +92,8 @@ email: e.arrows@gmail.com
     (multiple-value-bind (body code)
         (dex:post "http://localhost:4242/"
                   :content `(("title" . "Road to Lisp")
-                             ("body" . ,(asdf:system-relative-pathname :dexador #P"t/data/quote.txt"))))
+                             ("body" . ,(asdf:system-relative-pathname :dexador #P"t/data/quote.txt")))
+                  :use-connection-pool nil)
       (is code 200)
       (is body
           "title: Road to Lisp
@@ -102,7 +103,8 @@ body: \"Within a couple weeks of learning Lisp I found programming in any other 
   (subtest "upload"
     (multiple-value-bind (body code)
         (dex:post "http://localhost:4242/upload"
-                  :content (asdf:system-relative-pathname :dexador #P"t/data/quote.txt"))
+                  :content (asdf:system-relative-pathname :dexador #P"t/data/quote.txt")
+                  :use-connection-pool nil)
       (is code 200)
       (is body "\"Within a couple weeks of learning Lisp I found programming in any other language unbearably constraining.\" -- Paul Graham, Road to Lisp
 "))))
