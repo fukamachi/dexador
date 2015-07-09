@@ -8,7 +8,8 @@
                 :steal-connection
                 :push-connection)
   (:import-from :dexador.error
-                :http-request-failed)
+                :http-request-failed
+                :http-request-not-found)
   (:import-from :usocket
                 :socket-connect
                 :socket-stream)
@@ -425,7 +426,9 @@
                  ;; Raise an error when the HTTP response status code is 4xx or 50x.
                  (when (<= 400 status)
                    (restart-case
-                       (error 'http-request-failed
+                       (error (case status
+                                (404 'http-request-not-found)
+                                (otherwise 'http-request-failed))
                               :body body
                               :headers headers
                               :uri uri

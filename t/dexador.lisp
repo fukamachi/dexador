@@ -125,18 +125,29 @@ body: \"Within a couple weeks of learning Lisp I found programming in any other 
 
 (subtest-app "HTTP request failed"
     (lambda (env)
-      (declare (ignore env))
-      '(404 () ("not found")))
+      (if (string= (getf env :path-info) "/404")
+          '(404 () ("Not Found"))
+          '(500 () ("Internal Server Error"))))
   (handler-case
       (progn
         (dex:get "http://localhost:4242/")
         (fail "Must raise an error DEX:HTTP-REQUEST-FAILED"))
     (dex:http-request-failed (e)
       (pass "Raise DEX:HTTP-REQUEST-FAILED error")
+      (is (dex:response-status e) 500
+          "response status is 500")
+      (is (dex:response-body e) "Internal Server Error"
+          "response body is \"Internal Server Error\"")))
+  (handler-case
+      (progn
+        (dex:get "http://localhost:4242/404")
+        (fail "Must raise an error DEX:HTTP-REQUEST-NOT-FOUND"))
+    (dex:http-request-not-found (e)
+      (pass "Raise DEX:HTTP-REQUEST-FAILED error")
       (is (dex:response-status e) 404
           "response status is 404")
-      (is (dex:response-body e) "not found"
-          "response body is \"not found\""))))
+      (is (dex:response-body e) "Not Found"
+          "response body is \"Not Found\""))))
 
 (subtest "Using cookies"
   (let ((cookie-jar (cl-cookie:make-cookie-jar)))

@@ -14,6 +14,7 @@
                 :make-connection-pool)
   (:import-from :dexador.error
                 :http-request-failed
+                :http-request-not-found
                 :response-body
                 :response-status
                 :response-headers
@@ -33,6 +34,7 @@
 
            ;; Errors
            :http-request-failed
+           :http-request-not-found
            :response-body
            :response-status
            :response-headers

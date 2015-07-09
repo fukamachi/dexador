@@ -4,6 +4,7 @@
   (:import-from :quri
                 :render-uri)
   (:export :http-request-failed
+           :http-request-not-found
            :response-body
            :response-status
            :response-headers
@@ -24,3 +25,10 @@
                (format stream "An HTTP request to ~S has failed (status=~D)."
                        (quri:render-uri uri)
                        status)))))
+
+(define-condition http-request-not-found (http-request-failed)
+  ()
+  (:report (lambda (condition stream)
+             (with-slots (uri) condition
+               (format stream "An HTTP request to ~S returned 404 not found."
+                       (quri:render-uri uri))))))
