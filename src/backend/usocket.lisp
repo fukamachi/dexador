@@ -38,7 +38,8 @@
                 :uri-path
                 :uri-authority
                 :uri-scheme
-                :url-encode-params)
+                :url-encode-params
+                :merge-uris)
   (:import-from :chipz
                 :decompress
                 :make-dstate)
@@ -392,7 +393,7 @@
                                      (uri-port uri))))
                        (progn
                          (unless (= 0 max-redirects)
-                           (setq uri location-uri)
+                           (setq uri (merge-uris location-uri uri))
                            (let ((next-first-line-data
                                    (with-fast-output (buffer)
                                      (write-first-line method location-uri version buffer))))
