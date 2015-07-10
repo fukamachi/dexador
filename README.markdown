@@ -7,7 +7,7 @@ Dexador is yet another HTTP client for Common Lisp with neat APIs and connection
 
 ## Warning
 
-This software is still ALPHA quality. The APIs will be likely to change.
+This software is still BETA quality. The APIs will be likely to change.
 
 ## Is it fast?
 
