@@ -427,13 +427,10 @@
                  ;; Raise an error when the HTTP response status code is 4xx or 50x.
                  (when (<= 400 status)
                    (restart-case
-                       (error (case status
-                                (404 'http-request-not-found)
-                                (otherwise 'http-request-failed))
-                              :body body
-                              :headers headers
-                              :uri uri
-                              :status status)
+                       (http-request-failed status
+                                            :body body
+                                            :headers headers
+                                            :uri uri)
                      (retry-request ()
                        :report "Retry the same request."
                        (go retry))
