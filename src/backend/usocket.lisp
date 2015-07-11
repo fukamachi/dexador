@@ -51,7 +51,8 @@
   (:import-from :alexandria
                 :copy-stream
                 :if-let
-                :when-let)
+                :when-let
+                :ensure-list)
   (:export :request
 
            ;; Restarts
@@ -401,7 +402,7 @@
                  (print-verbose-data :incoming response-headers-data))
                (when cookie-jar
                  (when-let (set-cookies (append (gethash "set-cookie" response-headers)
-                                                (gethash "set-cookie2" response-headers)))
+                                                (ensure-list (gethash "set-cookie2" response-headers))))
                    (merge-cookies cookie-jar
                                   (remove nil (mapcar #'parse-set-cookie-header set-cookies)))))
                (when (and (member status '(301 302 303 307) :test #'=)

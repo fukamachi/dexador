@@ -155,19 +155,21 @@ body: \"Within a couple weeks of learning Lisp I found programming in any other 
                 302
                 200)
             ;; mixi.jp
-            '(:set-cookie "_auid=a8acafbaef245a806f6a308506dc95c8; domain=localhost; path=/; expires=Mon, 10-Jul-2017 12:32:47 GMT")
+            '(:set-cookie "_auid=a8acafbaef245a806f6a308506dc95c8; domain=localhost; path=/; expires=Mon, 10-Jul-2017 12:32:47 GMT"
+              ;; sourceforge
+              :set-cookie2 "VISITOR=55a11217d3179d198af1d003; expires=\"Tue, 08-Jul-2025 12:54:47 GMT\"; httponly; Max-Age=315360000; Path=/")
             '("ok")))
   (let ((cookie-jar (cl-cookie:make-cookie-jar)))
     (is (length (cl-cookie:cookie-jar-cookies cookie-jar)) 0 "0 cookies")
     (dex:head "http://localhost:4242/" :cookie-jar cookie-jar)
-    (is (length (cl-cookie:cookie-jar-cookies cookie-jar)) 1 "1 cookie")
+    (is (length (cl-cookie:cookie-jar-cookies cookie-jar)) 2 "2 cookies")
     (dex:head "http://localhost:4242/" :cookie-jar cookie-jar))
 
   ;; 302
   (let ((cookie-jar (cl-cookie:make-cookie-jar)))
     (is (length (cl-cookie:cookie-jar-cookies cookie-jar)) 0 "0 cookies")
     (dex:head "http://localhost:4242/302" :cookie-jar cookie-jar)
-    (is (length (cl-cookie:cookie-jar-cookies cookie-jar)) 1 "1 cookie")
+    (is (length (cl-cookie:cookie-jar-cookies cookie-jar)) 2 "2 cookies")
     (dex:head "http://localhost:4242/302" :cookie-jar cookie-jar)))
 
 (subtest-app "verbose"
