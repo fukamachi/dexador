@@ -237,6 +237,18 @@
      (ignore-and-continue ()
        :report "Ignore the error and continue.")))
 
+(defun build-cookie-headers (uri cookie-jar)
+  (with-header-output (buffer)
+    (let ((cookies (cookie-jar-host-cookies cookie-jar (uri-host uri)
+                                            :securep (string= (uri-scheme uri) "https")
+                                            :path (or (uri-path uri) "/"))))
+      (when cookies
+        (fast-write-sequence #.(ascii-string-to-octets "Cookie: ") buffer)
+        (fast-write-sequence
+         (ascii-string-to-octets (write-cookie-header cookies))
+         buffer)
+        (fast-write-sequence +crlf+ buffer)))))
+
 (defun-careful request (uri &rest args
                             &key (method :get) (version 1.1)
                             content headers
@@ -334,24 +346,15 @@
                          (write-header :content-length (cdr content-length))
                          (with-open-file (in content)
                            (write-header :content-length (file-length in))))))))
-                 (when cookie-jar
-                   (let ((cookies (cookie-jar-host-cookies cookie-jar (uri-host uri)
-                                                           :securep (string= (uri-scheme uri) "https")
-                                                           :path (or (uri-path uri) "/"))))
-                     (when cookies
-                       (fast-write-sequence #.(ascii-string-to-octets "Cookie: ") buffer)
-                       (fast-write-sequence
-                        (ascii-string-to-octets (write-cookie-header cookies))
-                        buffer)
-                       (fast-write-sequence +crlf+ buffer))))
 
                  ;; Custom headers
                  (loop for (name . value) in headers
                        unless (member name '(:user-agent :host :accept
                                              :connection
                                              :content-type :content-length) :test #'string-equal)
-                         do (write-header name value))
-                 (fast-write-sequence +crlf+ buffer)))))
+                         do (write-header name value)))))
+           (cookie-headers (and cookie-jar
+                                (build-cookie-headers uri cookie-jar))))
       (macrolet ((with-retrying (&body body)
                    `(if reusing-stream-p
                         (handler-bind ((error
@@ -368,6 +371,9 @@
          retry
            (write-sequence first-line-data stream)
            (write-sequence headers-data stream)
+           (when cookie-headers
+             (write-sequence cookie-headers stream))
+           (write-sequence +crlf+ stream)
            (with-retrying (force-output stream))
 
            ;; Sending the content
@@ -398,13 +404,15 @@
                        stream (make-new-connection uri))
                  (go retry))
                (when verbose
-                 (print-verbose-data :outgoing first-line-data headers-data)
+                 (print-verbose-data :outgoing first-line-data headers-data cookie-headers +crlf+)
                  (print-verbose-data :incoming response-headers-data))
                (when cookie-jar
                  (when-let (set-cookies (append (gethash "set-cookie" response-headers)
                                                 (ensure-list (gethash "set-cookie2" response-headers))))
                    (merge-cookies cookie-jar
-                                  (remove nil (mapcar #'parse-set-cookie-header set-cookies)))))
+                                  (remove nil (mapcar (lambda (cookie)
+                                                        (parse-set-cookie-header cookie (uri-host uri)))
+                                                      set-cookies)))))
                (when (and (member status '(301 302 303 307) :test #'=)
                           (member method '(:get :head) :test #'eq)
                           (gethash "location" response-headers))
@@ -417,15 +425,21 @@
                        (progn
                          (unless (= 0 max-redirects)
                            (setq uri (merge-uris location-uri uri))
+                           (when cookie-jar
+                             ;; Rebuild cookie-headers.
+                             (setf cookie-headers (build-cookie-headers uri cookie-jar)))
                            (let ((next-first-line-data
                                    (with-fast-output (buffer)
                                      (write-first-line method location-uri version buffer))))
                              (when verbose
-                               (print-verbose-data :outgoing next-first-line-data headers-data))
+                               (print-verbose-data :outgoing next-first-line-data headers-data cookie-headers +crlf+))
                              (write-sequence next-first-line-data stream)
                              (setf first-line-data next-first-line-data
                                    reusing-stream-p t))
                            (write-sequence headers-data stream)
+                           (when cookie-jar
+                             (write-sequence cookie-headers stream))
+                           (write-sequence +crlf+ stream)
                            (force-output stream)
                            (decf max-redirects)
                            (go start-reading)))
