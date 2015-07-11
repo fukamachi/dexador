@@ -425,24 +425,30 @@
                        (progn
                          (unless (= 0 max-redirects)
                            (setq uri (merge-uris location-uri uri))
+                           (setq first-line-data
+                                 (with-fast-output (buffer)
+                                   (write-first-line method uri version buffer)))
                            (when cookie-jar
                              ;; Rebuild cookie-headers.
-                             (setf cookie-headers (build-cookie-headers uri cookie-jar)))
-                           (let ((next-first-line-data
-                                   (with-fast-output (buffer)
-                                     (write-first-line method location-uri version buffer))))
-                             (when verbose
-                               (print-verbose-data :outgoing next-first-line-data headers-data cookie-headers +crlf+))
-                             (write-sequence next-first-line-data stream)
-                             (setf first-line-data next-first-line-data
-                                   reusing-stream-p t))
-                           (write-sequence headers-data stream)
-                           (when cookie-jar
-                             (write-sequence cookie-headers stream))
-                           (write-sequence +crlf+ stream)
-                           (force-output stream)
+                             (setq cookie-headers (build-cookie-headers uri cookie-jar)))
                            (decf max-redirects)
-                           (go start-reading)))
+                           (cond
+                             ((equalp (gethash "connection" response-headers) "close")
+                              (setq use-connection-pool nil
+                                    reusing-stream-p nil
+                                    stream (make-new-connection uri))
+                              (go retry))
+                             (t
+                              (setq reusing-stream-p t)
+                              (when verbose
+                                (print-verbose-data :outgoing first-line-data headers-data cookie-headers +crlf+))
+                              (write-sequence first-line-data stream)
+                              (write-sequence headers-data stream)
+                              (when cookie-jar
+                                (write-sequence cookie-headers stream))
+                              (write-sequence +crlf+ stream)
+                              (force-output stream)
+                              (go start-reading)))))
                        (progn
                          (finalize-connection stream (gethash "connection" response-headers) uri)
                          (setf (getf args :headers)
