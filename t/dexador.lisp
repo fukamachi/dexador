@@ -149,12 +149,26 @@ body: \"Within a couple weeks of learning Lisp I found programming in any other 
       (is (dex:response-body e) "Not Found"
           "response body is \"Not Found\""))))
 
-(subtest "Using cookies"
+(subtest-app "Using cookies"
+    (lambda (env)
+      (list (if (string= (getf env :path-info) "/302")
+                302
+                200)
+            ;; mixi.jp
+            '(:set-cookie "_auid=a8acafbaef245a806f6a308506dc95c8; domain=localhost; path=/; expires=Mon, 10-Jul-2017 12:32:47 GMT")
+            '("ok")))
   (let ((cookie-jar (cl-cookie:make-cookie-jar)))
     (is (length (cl-cookie:cookie-jar-cookies cookie-jar)) 0 "0 cookies")
-    (dex:head "https://mixi.jp" :cookie-jar cookie-jar)
-    (is (length (cl-cookie:cookie-jar-cookies cookie-jar)) 2 "2 cookies")
-    (dex:head "https://mixi.jp" :cookie-jar cookie-jar)))
+    (dex:head "http://localhost:4242/" :cookie-jar cookie-jar)
+    (is (length (cl-cookie:cookie-jar-cookies cookie-jar)) 1 "1 cookie")
+    (dex:head "http://localhost:4242/" :cookie-jar cookie-jar))
+
+  ;; 302
+  (let ((cookie-jar (cl-cookie:make-cookie-jar)))
+    (is (length (cl-cookie:cookie-jar-cookies cookie-jar)) 0 "0 cookies")
+    (dex:head "http://localhost:4242/302" :cookie-jar cookie-jar)
+    (is (length (cl-cookie:cookie-jar-cookies cookie-jar)) 1 "1 cookie")
+    (dex:head "http://localhost:4242/302" :cookie-jar cookie-jar)))
 
 (subtest-app "verbose"
     (lambda (env)

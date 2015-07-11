@@ -399,6 +399,11 @@
                (when verbose
                  (print-verbose-data :outgoing first-line-data headers-data)
                  (print-verbose-data :incoming response-headers-data))
+               (when cookie-jar
+                 (when-let (set-cookies (append (gethash "set-cookie" response-headers)
+                                                (gethash "set-cookie2" response-headers)))
+                   (merge-cookies cookie-jar
+                                  (remove nil (mapcar #'parse-set-cookie-header set-cookies)))))
                (when (and (member status '(301 302 303 307) :test #'=)
                           (member method '(:get :head) :test #'eq)
                           (gethash "location" response-headers))
@@ -432,11 +437,6 @@
                          (return-from request
                            (apply #'request location-uri args))))))
                (finalize-connection stream (gethash "connection" response-headers) uri)
-               (when cookie-jar
-                 (when-let (set-cookies (append (gethash "set-cookie" response-headers)
-                                                (gethash "set-cookie2" response-headers)))
-                   (merge-cookies cookie-jar
-                                  (mapcar #'parse-set-cookie-header set-cookies))))
                (let ((body (decompress-body (gethash "content-encoding" response-headers) body)))
                  (setf body
                        (if force-binary
