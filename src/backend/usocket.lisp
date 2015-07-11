@@ -224,6 +224,18 @@
             finally
                (boundary-line t)))))
 
+(defmacro http-request-failed-with-restarts (status &key body headers uri)
+  `(restart-case
+       (http-request-failed ,status
+                            :body ,body
+                            :headers ,headers
+                            :uri ,uri)
+     (retry-request ()
+       :report "Retry the same request."
+       (go retry))
+     (ignore-and-continue ()
+       :report "Ignore the error and continue.")))
+
 (defun-careful request (uri &rest args
                             &key (method :get) (version 1.1)
                             content headers
@@ -373,8 +385,13 @@
                  (read-response stream (not (eq method :head)) verbose))
              (let ((status (http-status http))
                    (response-headers (http-headers http)))
-               (when (and reusing-stream-p
-                          (= status 0))
+               (when (= status 0)
+                 (unless reusing-stream-p
+                   ;; There's nothing we can do.
+                   (http-request-failed-with-restarts status
+                                                      :body body
+                                                      :headers headers
+                                                      :uri uri))
                  (setf use-connection-pool nil
                        reusing-stream-p nil
                        stream (make-new-connection uri))
@@ -399,7 +416,9 @@
                                      (write-first-line method location-uri version buffer))))
                              (when verbose
                                (print-verbose-data :outgoing next-first-line-data headers-data))
-                             (write-sequence next-first-line-data stream))
+                             (write-sequence next-first-line-data stream)
+                             (setf first-line-data next-first-line-data
+                                   reusing-stream-p t))
                            (write-sequence headers-data stream)
                            (force-output stream)
                            (decf max-redirects)
@@ -426,16 +445,10 @@
                                         body)))
                  ;; Raise an error when the HTTP response status code is 4xx or 50x.
                  (when (<= 400 status)
-                   (restart-case
-                       (http-request-failed status
-                                            :body body
-                                            :headers headers
-                                            :uri uri)
-                     (retry-request ()
-                       :report "Retry the same request."
-                       (go retry))
-                     (ignore-and-continue ()
-                       :report "Ignore the error and continue.")))
+                   (http-request-failed-with-restarts status
+                                                      :body body
+                                                      :headers headers
+                                                      :uri uri))
                  (return-from request
                    (values body
                            status
