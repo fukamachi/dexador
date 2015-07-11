@@ -432,23 +432,12 @@
                              ;; Rebuild cookie-headers.
                              (setq cookie-headers (build-cookie-headers uri cookie-jar)))
                            (decf max-redirects)
-                           (cond
-                             ((equalp (gethash "connection" response-headers) "close")
-                              (setq use-connection-pool nil
-                                    reusing-stream-p nil
-                                    stream (make-new-connection uri))
-                              (go retry))
-                             (t
-                              (setq reusing-stream-p t)
-                              (when verbose
-                                (print-verbose-data :outgoing first-line-data headers-data cookie-headers +crlf+))
-                              (write-sequence first-line-data stream)
-                              (write-sequence headers-data stream)
-                              (when cookie-jar
-                                (write-sequence cookie-headers stream))
-                              (write-sequence +crlf+ stream)
-                              (force-output stream)
-                              (go start-reading)))))
+                           (if (equalp (gethash "connection" response-headers) "close")
+                               (setq use-connection-pool nil
+                                     reusing-stream-p nil
+                                     stream (make-new-connection uri))
+                               (setq reusing-stream-p t))
+                           (go retry)))
                        (progn
                          (finalize-connection stream (gethash "connection" response-headers) uri)
                          (setf (getf args :headers)
