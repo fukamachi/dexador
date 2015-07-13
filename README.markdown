@@ -9,15 +9,19 @@ Dexador is yet another HTTP client for Common Lisp with neat APIs and connection
 
 This software is still BETA quality. The APIs will be likely to change.
 
-## Is it fast?
+We'd pretty appreciate your feedback. When you find a bug, please check out the latest version of Dexador before reporting an issue.
 
-![Benchmark graph](images/benchmark.png)
+```
+$ cd ~/common-lisp
+$ git clone https://github.com/fukamachi/dexador
+$ git clone https://github.com/fukamachi/cl-cookie
+```
 
-It's 2 times faster than [Drakma](http://weitz.de/drakma/).
+## Differences from Drakma
 
-Why the difference though both libraries are built on top of usocket? Because Dexador reuses connections implicitly and no need to establish a TCP connection every time. As it is a quite general use case to send HTTP requests to the same host many times, the connection-pooling would work in various applications.
-
-See [Benchmark](#benchmark) for the detail.
+* Fast, particularly when requesting to the same host (See [Benchmark](#benchmark))
+* Neat APIs
+* Signal a condition when HTTP request failed
 
 ## Usage
 
@@ -164,6 +168,33 @@ You can overwrite the default User-Agent header by simply specifying "User-Agent
 
 Dexador reuses a connection by default. As it skips a TCP handshake, it would be much faster when you send requests to the same host continuously.
 
+### Hanlding unexpected HTTP status code
+
+Dexador singals a condition `http-request-failed` when the server returned 4xx or 5xx status code.
+
+```common-lisp
+;; Handles 400 bad request
+(handler-case (dex:get "http://lisp.org")
+  (dex:http-request-bad-request ()
+    ;; Runs when 400 bad request returned
+    )
+  (dex:http-request-failed (e)
+    ;; For other 4xx or 5xx
+    (format *error-output* "The server returned ~D" (dex:response-status e))))
+
+;; Ignore
+(handler-bind ((dex:http-request-failed
+                 (lambda (e)
+                   (invoke-restart (find-restart 'dex:ignore-and-continue e)))))
+  (dex:get "http://lisp.org"))
+
+;; Retry
+(handler-bind ((dex:http-request-failed
+                 (lambda (e)
+                   (invoke-restart (find-restart 'dex:retry-request e)))))
+  (dex:get "http://lisp.org"))
+```
+
 ## Functions
 
 All functions take similar arguments.
@@ -201,9 +232,10 @@ All functions take similar arguments.
 ### \[Function\] request
 
 ```common-lisp
-(dex:request uri &key method version content headers cookie-jar timeout keep-alive max-redirects
+(dex:request uri &key method version content headers basic-auth cookie-jar timeout
+                   (keep-alive t) (use-connection-pool t) (max-redirects 5)
                    ssl-key-file ssl-cert-file ssl-key-password
-                   stream verbose)
+                   stream verbose force-binary)
 ;=> body
 ;   status
 ;   response-headers
@@ -213,10 +245,22 @@ All functions take similar arguments.
 
 Send an HTTP request to `uri`.
 
+The `body` is an octet vector or a string if the `Content-Type` is `text/*`. If you always want it to return an octet vector, specify `:force-binary` as `T`.
+
+The `status` is an integer which represents HTTP status code.
+
+The `response-headers` is a hash table which represents HTTP response headers. Note that all hash keys are downcased like "content-type". If there's duplicate HTTP headers, those values are concatenated with a comma.
+
+The `uri` is a [QURI](https://github.com/fukamachi/quri) object which represents the last URI Dexador requested.
+
+The `stream` is a usocket stream to communicate with the HTTP server if the connection is still alive and can be reused. This value may be `NIL` if `:keep-alive` is `NIL` or the server closed the connection with `Connection: close` header.
+
+This function signals `http-request-failed` when the HTTP status code is 4xx or 5xx.
+
 ### \[Function\] get
 
 ```common-lisp
-(dex:get uri &key version headers cookie-jar keep-alive timeout max-redirects force-binary
+(dex:get uri &key version headers basic-auth cookie-jar keep-alive timeout max-redirects force-binary
                ssl-key-file ssl-cert-file ssl-key-password
                stream verbose)
 ```
@@ -292,6 +336,12 @@ Evaluation took:
   1,494,851,690 processor cycles
   1,472,992 bytes consed
 ```
+
+## See Also
+
+* [fast-http](https://github.com/fukamachi/fast-http)
+* [cl-cookie](https://github.com/fukamachi/cl-cookie)
+* [QURI](https://github.com/fukamachi/quri)
 
 ## Author
 
