@@ -17,6 +17,13 @@ $ git clone https://github.com/fukamachi/dexador
 $ git clone https://github.com/fukamachi/cl-cookie
 ```
 
+After that, check if you're using the local copies by `ql:where-is-system`.
+
+```common-lisp
+(ql:where-is-system :dexador)
+;=> #P"/Users/nitro_idiot/common-lisp/dexador/"
+```
+
 ## Differences from Drakma
 
 * Fast, particularly when requesting to the same host (See [Benchmark](#benchmark))
