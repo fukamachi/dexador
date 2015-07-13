@@ -128,14 +128,14 @@ Dexador adopts [cl-cookie](https://github.com/fukamachi/cl-cookie) for its cooki
 
 ```common-lisp
 (dex:head "http://www.hatena.ne.jp/" :basic-auth '("nitro_idiot" . "password") :verbose t)
->>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
-HEAD / HTTP/1.1
-User-Agent: Dexador/0.1 (SBCL 1.2.9); Darwin; 14.1.0
-Host: www.hatena.ne.jp
-Accept: */*
-Authorization: Basic bml0cm9faWRpb3Q6cGFzc3dvcmQ=
-
->>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+;-> >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+;   HEAD / HTTP/1.1
+;   User-Agent: Dexador/0.1 (SBCL 1.2.9); Darwin; 14.1.0
+;   Host: www.hatena.ne.jp
+;   Accept: */*
+;   Authorization: Basic bml0cm9faWRpb3Q6cGFzc3dvcmQ=
+;   
+;   >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 ```
 
 ### Faking a User-Agent header
