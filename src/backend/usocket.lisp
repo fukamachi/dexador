@@ -410,7 +410,11 @@
                                                 (ensure-list (gethash "set-cookie2" response-headers))))
                    (merge-cookies cookie-jar
                                   (remove nil (mapcar (lambda (cookie)
-                                                        (parse-set-cookie-header cookie (uri-host uri)))
+                                                        (declare (type string cookie))
+                                                        (unless (= (length cookie) 0)
+                                                          (parse-set-cookie-header cookie
+                                                                                   (uri-host uri)
+                                                                                   (uri-path uri))))
                                                       set-cookies)))))
                (when (and (member status '(301 302 303 307) :test #'=)
                           (member method '(:get :head) :test #'eq)
