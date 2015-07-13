@@ -239,9 +239,8 @@
 
 (defun build-cookie-headers (uri cookie-jar)
   (with-header-output (buffer)
-    (let ((cookies (cookie-jar-host-cookies cookie-jar (uri-host uri)
-                                            :securep (string= (uri-scheme uri) "https")
-                                            :path (or (uri-path uri) "/"))))
+    (let ((cookies (cookie-jar-host-cookies cookie-jar (uri-host uri) (or (uri-path uri) "/")
+                                            :securep (string= (uri-scheme uri) "https"))))
       (when cookies
         (fast-write-sequence #.(ascii-string-to-octets "Cookie: ") buffer)
         (fast-write-sequence
