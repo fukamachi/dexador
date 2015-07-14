@@ -74,3 +74,27 @@
                  ssl-key-file ssl-cert-file ssl-key-password stream verbose)
   (declare (ignore version headers basic-auth cookie-jar keep-alive use-connection-pool timeout force-binary ssl-key-file ssl-cert-file ssl-key-password stream verbose))
   (apply #'request uri :method :delete args))
+
+(defun ignore-and-continue (e)
+  (let ((restart (find-restart 'ignore-and-continue e)))
+    (when restart
+      (invoke-restart restart))))
+
+(defun retry-request (times)
+  (etypecase times
+    (condition
+     (let ((restart (find-restart 'retry-request times)))
+       (when restart
+         (invoke-restart restart))))
+    (integer
+     (retry-request-ntimes times))))
+
+(defun retry-request-ntimes (n)
+  (declare (type integer n))
+  (lambda (e)
+    (declare (type condition e))
+    (let ((restart (find-restart 'retry-request e)))
+      (when restart
+        (when (< 0 n)
+          (decf n)
+          (invoke-restart restart))))))

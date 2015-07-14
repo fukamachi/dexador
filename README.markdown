@@ -189,16 +189,16 @@ Dexador singals a condition `http-request-failed` when the server returned 4xx o
     ;; For other 4xx or 5xx
     (format *error-output* "The server returned ~D" (dex:response-status e))))
 
-;; Ignore
-(handler-bind ((dex:http-request-failed
-                 (lambda (e)
-                   (invoke-restart (find-restart 'dex:ignore-and-continue e)))))
+;; Ignore 404 Not Found and continue
+(handler-bind ((dex:http-request-not-found #'dex:ignore-and-continue))
   (dex:get "http://lisp.org"))
 
 ;; Retry
-(handler-bind ((dex:http-request-failed
-                 (lambda (e)
-                   (invoke-restart (find-restart 'dex:retry-request e)))))
+(handler-bind ((dex:http-request-failed #'dex:retry-request))
+  (dex:get "http://lisp.org"))
+
+;; Retry 5 times
+(handler-bind ((dex:http-request-failed (dex:retry-request 5)))
   (dex:get "http://lisp.org"))
 ```
 
