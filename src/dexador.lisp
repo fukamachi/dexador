@@ -12,13 +12,6 @@
                 :*connection-pool*
                 :*use-connection-pool*
                 :make-connection-pool)
-  (:import-from :dexador.error
-                :http-request-failed
-                :http-request-not-found
-                :response-body
-                :response-status
-                :response-headers
-                :request-uri)
   (:import-from :dexador.util
                 :*default-timeout*)
   (:export :request
@@ -32,18 +25,12 @@
            :*use-connection-pool*
            :make-connection-pool
 
-           ;; Errors
-           :http-request-failed
-           :http-request-not-found
-           :response-body
-           :response-status
-           :response-headers
-           :request-uri
-
            ;; Restarts
            :retry-request
            :ignore-and-continue))
 (in-package :dexador)
+
+(cl-reexport:reexport-from :dexador.error)
 
 (defun get (uri &rest args
             &key version headers basic-auth cookie-jar keep-alive use-connection-pool timeout max-redirects force-binary

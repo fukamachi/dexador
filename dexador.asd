@@ -26,6 +26,7 @@
                :trivial-mimes
                :chipz
                :cl-base64
+               :cl-reexport
                #-dexador-no-ssl :cl+ssl
                :bordeaux-threads
                :alexandria)
