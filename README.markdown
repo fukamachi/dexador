@@ -198,7 +198,7 @@ Dexador singals a condition `http-request-failed` when the server returned 4xx o
   (dex:get "http://lisp.org"))
 
 ;; Retry 5 times
-(handler-bind ((dex:http-request-failed (dex:retry-request 5)))
+(handler-bind ((dex:http-request-failed (dex:retry-request 5 :interval 3)))
   (dex:get "http://lisp.org"))
 ```
 
