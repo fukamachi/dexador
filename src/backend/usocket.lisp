@@ -277,11 +277,11 @@
                                                 :password ssl-key-password)
                  stream)))
          (finalize-connection (stream connection-header uri)
-           (if keep-alive
-               (when (or (and (= version 1.0)
-                              (equalp connection-header "keep-alive"))
-                         (not (equalp connection-header "close")))
-                 (push-connection (uri-authority uri) stream))
+           (if (and keep-alive
+                    (or (and (= version 1.0)
+                             (equalp connection-header "keep-alive"))
+                        (not (equalp connection-header "close"))))
+               (push-connection (uri-authority uri) stream)
                (ignore-errors (close stream)))))
     (let* ((uri (if (quri:uri-p uri)
                     uri
