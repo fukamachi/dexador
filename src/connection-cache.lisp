@@ -53,7 +53,10 @@
 
 (defun push-connection (host-port socket)
   (when *use-connection-pool*
-    (let ((*connection-pool* (get-connection-pool)))
+    (let* ((*connection-pool* (get-connection-pool))
+           (old-conn (gethash host-port *connection-pool*)))
+      (when old-conn
+        (ignore-errors (close old-conn)))
       (setf (gethash host-port *connection-pool*)
             socket))))
 
