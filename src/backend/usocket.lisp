@@ -101,7 +101,7 @@
                               (lambda (headers)
                                 (setq header-finished-p t
                                       content-length (gethash "content-length" headers)
-                                      transfer-encoding-p (not (gethash "transfer-encofing" headers)))
+                                      transfer-encoding-p (gethash "transfer-encoding" headers))
                                 (unless (and has-body
                                              (or content-length
                                                  transfer-encoding-p))
