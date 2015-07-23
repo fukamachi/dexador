@@ -95,14 +95,16 @@
          (header-finished-p nil)
          (finishedp nil)
          (content-length nil)
+         (transfer-encoding-p)
          (parser (make-parser http
                               :header-callback
                               (lambda (headers)
                                 (setq header-finished-p t
-                                      content-length (gethash "content-length" headers))
+                                      content-length (gethash "content-length" headers)
+                                      transfer-encoding-p (not (gethash "transfer-encofing" headers)))
                                 (unless (and has-body
                                              (or content-length
-                                                 (gethash "transfer-encoding" headers)))
+                                                 transfer-encoding-p))
                                   (setq finishedp t)))
                               :body-callback
                               (lambda (data start end)
@@ -111,6 +113,7 @@
                               (lambda ()
                                 (setq finishedp t)))))
     (loop for buf of-type octets = (if (and header-finished-p
+                                            (not transfer-encoding-p)
                                             content-length)
                                        (let ((buf (make-array content-length :element-type '(unsigned-byte 8))))
                                          (read-sequence buf stream)
