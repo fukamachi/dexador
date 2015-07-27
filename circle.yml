@@ -1,7 +1,7 @@
 machine:
   environment:
     PATH: ~/.roswell/bin:$PATH
-    ROSWELL_BRANCH: master
+    ROSWELL_BRANCH: v0.0.3.37
 
 dependencies:
   pre:
