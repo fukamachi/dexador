@@ -1,12 +1,15 @@
 (in-package :cl-user)
 (defpackage dexador-test
   (:use :cl
-        :prove)
-  (:import-from :clack.test
-                :subtest-app))
+        :prove))
 (in-package :dexador-test)
 
-(plan 6)
+(plan 7)
+
+(defmacro subtest-app (desc app &body body)
+  `(clack.test:subtest-app ,desc ,app
+     (dex:clear-connection-pool)
+     ,@body))
 
 (subtest-app "normal case"
     (lambda (env)
@@ -177,5 +180,16 @@ body: \"Within a couple weeks of learning Lisp I found programming in any other 
       (declare (ignore env))
       '(200 () ("ok")))
   (ok (dex:get "http://localhost:4242/" :verbose t)))
+
+(subtest-app "want-stream"
+    (lambda (env)
+      (declare (ignore env))
+      '(200 (:content-type "text/plain") ("hi")))
+  (let ((body (dex:get "http://localhost:4242/" :want-stream t :keep-alive nil)))
+    (is-type body 'stream)
+    (let ((buf (make-array 2 :element-type '(unsigned-byte 8))))
+      (read-sequence buf body)
+      (is (babel:octets-to-string buf) "hi"))
+    (ignore-errors (close body))))
 
 (finalize)

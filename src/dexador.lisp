@@ -11,7 +11,8 @@
   (:import-from :dexador.connection-cache
                 :*connection-pool*
                 :*use-connection-pool*
-                :make-connection-pool)
+                :make-connection-pool
+                :clear-connection-pool)
   (:import-from :dexador.util
                 :*default-timeout*)
   (:export :request
@@ -24,6 +25,7 @@
            :*connection-pool*
            :*use-connection-pool*
            :make-connection-pool
+           :clear-connection-pool
 
            ;; Restarts
            :retry-request
@@ -33,33 +35,37 @@
 (cl-reexport:reexport-from :dexador.error)
 
 (defun get (uri &rest args
-            &key version headers basic-auth cookie-jar keep-alive use-connection-pool timeout max-redirects force-binary
+            &key version headers basic-auth cookie-jar keep-alive use-connection-pool timeout max-redirects
+              force-binary want-stream
               ssl-key-file ssl-cert-file ssl-key-password stream verbose)
-  (declare (ignore version headers basic-auth cookie-jar keep-alive use-connection-pool timeout max-redirects force-binary ssl-key-file ssl-cert-file ssl-key-password stream verbose))
+  (declare (ignore version headers basic-auth cookie-jar keep-alive use-connection-pool timeout max-redirects force-binary want-stream ssl-key-file ssl-cert-file ssl-key-password stream verbose))
   (apply #'request uri :method :get args))
 
 (defun post (uri &rest args
-             &key version content headers basic-auth cookie-jar keep-alive use-connection-pool timeout force-binary
+             &key version content headers basic-auth cookie-jar keep-alive use-connection-pool timeout
+               force-binary want-stream
                ssl-key-file ssl-cert-file ssl-key-password stream verbose)
-  (declare (ignore version content headers basic-auth cookie-jar keep-alive use-connection-pool timeout force-binary ssl-key-file ssl-cert-file ssl-key-password stream verbose))
+  (declare (ignore version content headers basic-auth cookie-jar keep-alive use-connection-pool timeout force-binary want-stream ssl-key-file ssl-cert-file ssl-key-password stream verbose))
   (apply #'request uri :method :post args))
 
 (defun head (uri &rest args
-             &key version headers basic-auth cookie-jar timeout max-redirects force-binary
+             &key version headers basic-auth cookie-jar timeout max-redirects
                ssl-key-file ssl-cert-file ssl-key-password stream verbose)
-  (declare (ignore version headers basic-auth cookie-jar timeout max-redirects force-binary ssl-key-file ssl-cert-file ssl-key-password stream verbose))
+  (declare (ignore version headers basic-auth cookie-jar timeout max-redirects ssl-key-file ssl-cert-file ssl-key-password stream verbose))
   (apply #'request uri :method :head :use-connection-pool nil args))
 
 (defun put (uri &rest args
-            &key version content headers basic-auth cookie-jar keep-alive use-connection-pool timeout force-binary
+            &key version content headers basic-auth cookie-jar keep-alive use-connection-pool timeout
+              force-binary want-stream
               ssl-key-file ssl-cert-file ssl-key-password stream verbose)
-  (declare (ignore version content headers basic-auth cookie-jar keep-alive use-connection-pool timeout force-binary ssl-key-file ssl-cert-file ssl-key-password stream verbose))
+  (declare (ignore version content headers basic-auth cookie-jar keep-alive use-connection-pool timeout force-binary want-stream ssl-key-file ssl-cert-file ssl-key-password stream verbose))
   (apply #'request uri :method :put args))
 
 (defun delete (uri &rest args
-               &key version headers basic-auth cookie-jar keep-alive use-connection-pool timeout force-binary
+               &key version headers basic-auth cookie-jar keep-alive use-connection-pool timeout
+                 force-binary want-stream
                  ssl-key-file ssl-cert-file ssl-key-password stream verbose)
-  (declare (ignore version headers basic-auth cookie-jar keep-alive use-connection-pool timeout force-binary ssl-key-file ssl-cert-file ssl-key-password stream verbose))
+  (declare (ignore version headers basic-auth cookie-jar keep-alive use-connection-pool timeout force-binary want-stream ssl-key-file ssl-cert-file ssl-key-password stream verbose))
   (apply #'request uri :method :delete args))
 
 (defun ignore-and-continue (e)

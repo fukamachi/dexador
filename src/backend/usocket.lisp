@@ -24,6 +24,11 @@
                 :with-fast-output
                 :fast-write-sequence
                 :fast-write-byte)
+  (:import-from :chunga
+                :chunked-stream-input-chunking-p
+                :make-chunked-stream)
+  (:import-from :flexi-streams
+                :make-flexi-stream)
   (:import-from :trivial-mimes
                 :mime)
   (:import-from :cl-cookie
@@ -41,6 +46,7 @@
                 :url-encode-params
                 :merge-uris)
   (:import-from :chipz
+                :make-decompressing-stream
                 :decompress
                 :make-dstate)
   (:import-from :cl-base64
@@ -87,9 +93,10 @@
             (go read-cr))))
      eof)))
 
-(defun read-response (stream has-body collect-headers)
+(defun read-response (stream has-body collect-headers read-body)
   (let* ((http (make-http-response))
-         (body-data (make-output-buffer))
+         (body-data (and read-body
+                         (make-output-buffer)))
          (headers-data (and collect-headers
                             (make-output-buffer)))
          (header-finished-p nil)
@@ -107,8 +114,9 @@
                                                  transfer-encoding-p))
                                   (setq finishedp t)))
                               :body-callback
-                              (lambda (data start end)
-                                (fast-write-sequence data body-data start end))
+                              (and read-body
+                                   (lambda (data start end)
+                                     (fast-write-sequence data body-data start end)))
                               :finish-callback
                               (lambda ()
                                 (setq finishedp t)))))
@@ -123,12 +131,17 @@
                         (not header-finished-p))
                (fast-write-sequence buf headers-data))
              (funcall parser buf)
-          until (or finishedp
-                    (zerop (length buf))))
+          until (if read-body
+                    (or finishedp
+                        (zerop (length buf)))
+                    header-finished-p))
     (values http
-            (finish-output-buffer body-data)
+            (if read-body
+                (finish-output-buffer body-data)
+                stream)
             (and collect-headers
-                 (finish-output-buffer headers-data)))))
+                 (finish-output-buffer headers-data))
+            transfer-encoding-p)))
 
 (defun print-verbose-data (direction &rest data)
   (flet ((boundary-line ()
@@ -152,9 +165,13 @@
 
   (cond
     ((string= content-encoding "gzip")
-     (chipz:decompress nil (chipz:make-dstate :gzip) body))
+     (if (streamp body)
+         (chipz:make-decompressing-stream :gzip body)
+         (chipz:decompress nil (chipz:make-dstate :gzip) body)))
     ((string= content-encoding "deflate")
-     (chipz:decompress nil (chipz:make-dstate :deflate) body))
+     (if (streamp body)
+         (chipz:make-decompressing-stream :deflate body)
+         (chipz:decompress nil (chipz:make-dstate :deflate) body)))
     (T body)))
 
 (defun decode-body (content-type body)
@@ -162,13 +179,27 @@
                       (detect-charset content-type))))
     (if charset
         (handler-case
-            (babel:octets-to-string body :encoding charset)
+            (if (streamp body)
+                (flex:make-flexi-stream body :external-format charset)
+                (babel:octets-to-string body :encoding charset))
           (error (e)
             (warn (format nil "Failed to decode the body to ~S due to the following error (falling back to binary):~%  ~A"
                           charset
                           e))
             (return-from decode-body body)))
         body)))
+
+(defun convert-body (body content-encoding content-type chunkedp force-binary)
+  (let ((body (decompress-body content-encoding
+                               (if (and (streamp body)
+                                        chunkedp)
+                                   (let ((chunked-stream (chunga:make-chunked-stream body)))
+                                     (setf (chunga:chunked-stream-input-chunking-p chunked-stream) t)
+                                     chunked-stream)
+                                   body))))
+    (if force-binary
+        body
+        (decode-body content-type body))))
 
 (defun content-disposition (key val)
   (format nil "Content-Disposition: form-data; name=\"~A\"~:[~;~:*; filename=\"~A\"~]~C~C"
@@ -260,7 +291,8 @@
                             (max-redirects 5)
                             ssl-key-file ssl-cert-file ssl-key-password
                             stream verbose
-                            force-binary)
+                            force-binary
+                            want-stream)
   (declare (ignorable ssl-key-file ssl-cert-file ssl-key-password)
            (type float version))
   (flet ((make-new-connection (uri)
@@ -280,10 +312,11 @@
                                                 :password ssl-key-password)
                  stream)))
          (finalize-connection (stream connection-header uri)
-           (if (and keep-alive
-                    (or (and (= version 1.0)
-                             (equalp connection-header "keep-alive"))
-                        (not (equalp connection-header "close"))))
+           (if (or want-stream
+                   (and keep-alive
+                        (or (and (= version 1.0)
+                                 (equalp connection-header "keep-alive"))
+                            (not (equalp connection-header "close")))))
                (push-connection (uri-authority uri) stream)
                (ignore-errors (close stream)))))
     (let* ((uri (if (quri:uri-p uri)
@@ -389,9 +422,9 @@
              (with-retrying (force-output stream)))
 
          start-reading
-           (multiple-value-bind (http body response-headers-data)
+           (multiple-value-bind (http body response-headers-data transfer-encoding-p)
                (with-retrying
-                 (read-response stream (not (eq method :head)) verbose))
+                 (read-response stream (not (eq method :head)) verbose (not want-stream)))
              (let ((status (http-status http))
                    (response-headers (http-headers http)))
                (when (= status 0)
@@ -453,12 +486,11 @@
                          (return-from request
                            (apply #'request location-uri args))))))
                (finalize-connection stream (gethash "connection" response-headers) uri)
-               (let ((body (decompress-body (gethash "content-encoding" response-headers) body)))
-                 (setf body
-                       (if force-binary
-                           body
-                           (decode-body (gethash "content-type" response-headers)
-                                        body)))
+               (let ((body (convert-body body
+                                         (gethash "content-encoding" response-headers)
+                                         (gethash "content-type" response-headers)
+                                         transfer-encoding-p
+                                         force-binary)))
                  ;; Raise an error when the HTTP response status code is 4xx or 50x.
                  (when (<= 400 status)
                    (http-request-failed-with-restarts status

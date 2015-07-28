@@ -21,6 +21,8 @@
                :quri
                :fast-io
                :babel
+               :chunga
+               :flexi-streams
                :cl-ppcre
                :cl-cookie
                :trivial-mimes
