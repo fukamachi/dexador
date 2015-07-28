@@ -229,6 +229,8 @@ All functions take similar arguments.
   - The limit of redirections. The default is `5`. If the redirection exceeds the limit, functions return the last response (not raise a condition).
 - `force-binary` (boolean)
   - A flag for suppressing auto-decoding of the response body.
+- `want-stream` (boolean)
+  - A flag to get the response body as a stream.
 - `ssl-key-file`, `ssl-cert-file`, `ssl-key-password`
   - for HTTPS connection
 - `stream`
@@ -242,7 +244,7 @@ All functions take similar arguments.
 (dex:request uri &key method version content headers basic-auth cookie-jar timeout
                    (keep-alive t) (use-connection-pool t) (max-redirects 5)
                    ssl-key-file ssl-cert-file ssl-key-password
-                   stream verbose force-binary)
+                   stream verbose force-binary want-stream)
 ;=> body
 ;   status
 ;   response-headers
@@ -267,7 +269,7 @@ This function signals `http-request-failed` when the HTTP status code is 4xx or 
 ### \[Function\] get
 
 ```common-lisp
-(dex:get uri &key version headers basic-auth cookie-jar keep-alive timeout max-redirects force-binary
+(dex:get uri &key version headers basic-auth cookie-jar keep-alive timeout max-redirects force-binary want-stream
                ssl-key-file ssl-cert-file ssl-key-password
                stream verbose)
 ```
@@ -275,7 +277,7 @@ This function signals `http-request-failed` when the HTTP status code is 4xx or 
 ### \[Function\] post
 
 ```common-lisp
-(dex:post uri &key version headers content cookie-jar keep-alive timeout force-binary
+(dex:post uri &key version headers content cookie-jar keep-alive timeout force-binary want-stream
                 ssl-key-file ssl-cert-file ssl-key-password
                 stream verbose)
 ```
@@ -283,7 +285,7 @@ This function signals `http-request-failed` when the HTTP status code is 4xx or 
 ### \[Function\] head
 
 ```common-lisp
-(dex:head uri &key version headers cookie-jar timeout max-redirects force-binary
+(dex:head uri &key version headers cookie-jar timeout max-redirects
                 ssl-key-file ssl-cert-file ssl-key-password
                 stream verbose)
 ```
@@ -291,7 +293,7 @@ This function signals `http-request-failed` when the HTTP status code is 4xx or 
 ### \[Function\] put
 
 ```common-lisp
-(dex:put uri &key version headers content cookie-jar keep-alive timeout force-binary
+(dex:put uri &key version headers content cookie-jar keep-alive timeout force-binary want-stream
                ssl-key-file ssl-cert-file ssl-key-password
                stream verbose)
 ```
@@ -299,7 +301,7 @@ This function signals `http-request-failed` when the HTTP status code is 4xx or 
 ### \[Function\] delete
 
 ```common-lisp
-(dex:delete uri &key version headers cookie-jar keep-alive timeout force-binary
+(dex:delete uri &key version headers cookie-jar keep-alive timeout force-binary want-stream
                   ssl-key-file ssl-cert-file ssl-key-password
                   stream verbose)
 ```
