@@ -421,7 +421,8 @@
                                                       set-cookies)))))
                (when (and (member status '(301 302 303 307) :test #'=)
                           (member method '(:get :head) :test #'eq)
-                          (gethash "location" response-headers))
+                          (gethash "location" response-headers)
+                          (/= max-redirects 0))
                  (let ((location-uri (quri:uri (gethash "location" response-headers))))
                    (if (or (null (uri-host location-uri))
                            (and (string= (uri-host location-uri)
@@ -429,21 +430,20 @@
                                 (eql (uri-port location-uri)
                                      (uri-port uri))))
                        (progn
-                         (unless (= 0 max-redirects)
-                           (setq uri (merge-uris location-uri uri))
-                           (setq first-line-data
-                                 (with-fast-output (buffer)
-                                   (write-first-line method uri version buffer)))
-                           (when cookie-jar
-                             ;; Rebuild cookie-headers.
-                             (setq cookie-headers (build-cookie-headers uri cookie-jar)))
-                           (decf max-redirects)
-                           (if (equalp (gethash "connection" response-headers) "close")
-                               (setq use-connection-pool nil
-                                     reusing-stream-p nil
-                                     stream (make-new-connection uri))
-                               (setq reusing-stream-p t))
-                           (go retry)))
+                         (setq uri (merge-uris location-uri uri))
+                         (setq first-line-data
+                               (with-fast-output (buffer)
+                                 (write-first-line method uri version buffer)))
+                         (when cookie-jar
+                           ;; Rebuild cookie-headers.
+                           (setq cookie-headers (build-cookie-headers uri cookie-jar)))
+                         (decf max-redirects)
+                         (if (equalp (gethash "connection" response-headers) "close")
+                             (setq use-connection-pool nil
+                                   reusing-stream-p nil
+                                   stream (make-new-connection uri))
+                             (setq reusing-stream-p t))
+                         (go retry))
                        (progn
                          (finalize-connection stream (gethash "connection" response-headers) uri)
                          (setf (getf args :headers)
