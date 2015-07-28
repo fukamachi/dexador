@@ -1,12 +1,15 @@
 (in-package :cl-user)
 (defpackage dexador-test
   (:use :cl
-        :prove)
-  (:import-from :clack.test
-                :subtest-app))
+        :prove))
 (in-package :dexador-test)
 
 (plan 7)
+
+(defmacro subtest-app (desc app &body body)
+  `(clack.test:subtest-app ,desc ,app
+     (dex:clear-connection-pool)
+     ,@body))
 
 (subtest-app "normal case"
     (lambda (env)
