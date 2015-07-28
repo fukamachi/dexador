@@ -63,9 +63,9 @@
 
 (defun clear-connection-pool ()
   (let ((pool (get-connection-pool)))
-    (maphash (lambda (k v)
-               (declare (ignore v))
-               (remhash k pool))
+    (maphash (lambda (host-port conn)
+               (ignore-errors (close conn))
+               (remhash host-port pool))
              pool)
     t))
 
