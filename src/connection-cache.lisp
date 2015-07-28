@@ -7,7 +7,8 @@
            :*use-connection-pool*
            :make-connection-pool
            :steal-connection
-           :push-connection))
+           :push-connection
+           :clear-connection-pool))
 (in-package :dexador.connection-cache)
 
 (defparameter *connection-pool* nil)
@@ -59,5 +60,13 @@
         (ignore-errors (close old-conn)))
       (setf (gethash host-port *connection-pool*)
             socket))))
+
+(defun clear-connection-pool ()
+  (let ((pool (get-connection-pool)))
+    (maphash (lambda (k v)
+               (declare (ignore v))
+               (remhash k pool))
+             pool)
+    t))
 
 (initialize-threads-connection-pool)

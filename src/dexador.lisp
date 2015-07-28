@@ -11,7 +11,8 @@
   (:import-from :dexador.connection-cache
                 :*connection-pool*
                 :*use-connection-pool*
-                :make-connection-pool)
+                :make-connection-pool
+                :clear-connection-pool)
   (:import-from :dexador.util
                 :*default-timeout*)
   (:export :request
@@ -24,6 +25,7 @@
            :*connection-pool*
            :*use-connection-pool*
            :make-connection-pool
+           :clear-connection-pool
 
            ;; Restarts
            :retry-request
