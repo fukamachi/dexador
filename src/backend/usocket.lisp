@@ -66,7 +66,7 @@
            :ignore-and-continue))
 (in-package :dexador.backend.usocket)
 
-(defun-speedy read-until-crlf (stream)
+(defun-speedy read-until-crlf*2 (stream)
   (with-fast-output (buf)
     (tagbody
      read-cr
@@ -84,6 +84,35 @@
            ((null next-byte)
             (go eof))
            ((= next-byte (char-code #\Newline))
+            (fast-write-byte next-byte buf)
+            (go read-cr2))
+           ((= next-byte (char-code #\Return))
+            (fast-write-byte next-byte buf)
+            (go read-lf))
+           (T
+            (fast-write-byte next-byte buf)
+            (go read-cr))))
+
+     read-cr2
+       (let ((next-byte (read-byte stream nil nil)))
+         (declare (type (or (unsigned-byte 8) null) next-byte))
+         (cond
+           ((null next-byte)
+            (go eof))
+           ((= next-byte (char-code #\Return))
+            (fast-write-byte next-byte buf)
+            (go read-lf2))
+           (T
+            (fast-write-byte next-byte buf)
+            (go read-cr))))
+
+     read-lf2
+       (let ((next-byte (read-byte stream nil nil)))
+         (declare (type (or (unsigned-byte 8) null) next-byte))
+         (cond
+           ((null next-byte)
+            (go eof))
+           ((= next-byte (char-code #\Newline))
             (fast-write-byte next-byte buf))
            ((= next-byte (char-code #\Return))
             (fast-write-byte next-byte buf)
@@ -91,12 +120,13 @@
            (T
             (fast-write-byte next-byte buf)
             (go read-cr))))
+
      eof)))
 
 (defun read-response (stream has-body collect-headers read-body)
   (let* ((http (make-http-response))
-         (body-data (and read-body
-                         (make-output-buffer)))
+         body
+         body-data
          (headers-data (and collect-headers
                             (make-output-buffer)))
          (header-finished-p nil)
@@ -114,31 +144,37 @@
                                                  transfer-encoding-p))
                                   (setq finishedp t)))
                               :body-callback
-                              (and read-body
-                                   (lambda (data start end)
-                                     (fast-write-sequence data body-data start end)))
+                              (lambda (data start end)
+                                (when body-data
+                                  (fast-write-sequence data body-data start end)))
                               :finish-callback
                               (lambda ()
                                 (setq finishedp t)))))
-    (loop for buf of-type octets = (if (and header-finished-p
-                                            (not transfer-encoding-p)
-                                            content-length)
-                                       (let ((buf (make-array content-length :element-type '(unsigned-byte 8))))
-                                         (read-sequence buf stream)
-                                         buf)
-                                       (read-until-crlf stream))
+    (loop for buf of-type octets = (read-until-crlf*2 stream)
           do (when (and collect-headers
                         (not header-finished-p))
                (fast-write-sequence buf headers-data))
              (funcall parser buf)
-          until (if read-body
-                    (or finishedp
-                        (zerop (length buf)))
-                    header-finished-p))
+          until header-finished-p)
+    (cond
+      ((not read-body)
+       (setq body stream))
+      ((not has-body)
+       (setq body #.(make-array 0 :element-type '(unsigned-byte 8))))
+      (content-length
+       (let ((buf (make-array content-length :element-type '(unsigned-byte 8))))
+         (read-sequence buf stream)
+         (setq body buf)))
+      (T
+       (setq body-data (make-output-buffer))
+       (loop for buf of-type octets = (read-until-crlf*2 stream)
+             do (funcall parser buf)
+             until (or finishedp
+                       (zerop (length buf)))
+             finally
+                (setq body (finish-output-buffer body-data)))))
     (values http
-            (if read-body
-                (finish-output-buffer body-data)
-                stream)
+            body
             (and collect-headers
                  (finish-output-buffer headers-data))
             transfer-encoding-p)))
