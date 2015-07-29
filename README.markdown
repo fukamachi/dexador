@@ -175,7 +175,7 @@ You can overwrite the default User-Agent header by simply specifying "User-Agent
 
 Dexador reuses a connection by default. As it skips a TCP handshake, it would be much faster when you send requests to the same host continuously.
 
-### Hanlding unexpected HTTP status code
+### Handling unexpected HTTP status code
 
 Dexador singals a condition `http-request-failed` when the server returned 4xx or 5xx status code.
 
