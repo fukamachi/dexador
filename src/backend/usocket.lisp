@@ -456,6 +456,10 @@
                           (member method '(:get :head) :test #'eq)
                           (gethash "location" response-headers)
                           (/= max-redirects 0))
+                 ;; Need to read the response body
+                 (when want-stream
+                   (loop while (read-byte body nil nil)))
+
                  (let ((location-uri (quri:uri (gethash "location" response-headers))))
                    (if (or (null (uri-host location-uri))
                            (and (string= (uri-host location-uri)
