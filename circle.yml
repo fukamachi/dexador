@@ -1,6 +1,6 @@
 machine:
   environment:
-    PATH: ~/.roswell/bin:$PATH
+    PATH: ~/.roswell/bin:~/nginx/sbin:$PATH
     ROSWELL_BRANCH: v0.0.3.37
 
 dependencies:
@@ -11,7 +11,9 @@ dependencies:
         1) ros install ccl-bin;
            ros config set default.lisp ccl-bin ;;
       esac
-    - ros run -- --version
+    # nginx
+    - curl -L http://nginx.org/download/nginx-1.8.0.tar.gz | tar xzf -
+    - (cd nginx-1.8.0 && ./configure --prefix=$HOME/nginx && make && make install)
   override:
     - git clone https://github.com/fukamachi/fast-http ~/lisp/fast-http
     - git clone https://github.com/fukamachi/quri ~/lisp/quri
@@ -21,5 +23,10 @@ dependencies:
     - ros -l ~/lisp/prove/prove.asd install prove
 
 test:
+  pre:
+    - nginx -c "/home/ubuntu/dexador/t/nginx.conf" -p "$HOME/nginx"
+    - ros --version
+    - ros run -- --version
   override:
     - if [ "$CIRCLE_NODE_INDEX" = 0 ]; then COVERALLS=true run-prove dexador-test.asd; else run-prove dexador-test.asd; fi: {parallel: true}
+    - benchmark/bench
