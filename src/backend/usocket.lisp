@@ -79,47 +79,47 @@
 
      read-lf
        (let ((next-byte (read-byte stream nil nil)))
-         (declare (type (or (unsigned-byte 8) null) next-byte))
-         (cond
-           ((null next-byte)
-            (go eof))
-           ((= next-byte (char-code #\Newline))
-            (fast-write-byte next-byte buf)
-            (go read-cr2))
-           ((= next-byte (char-code #\Return))
-            (fast-write-byte next-byte buf)
-            (go read-lf))
-           (T
-            (fast-write-byte next-byte buf)
-            (go read-cr))))
+         (unless next-byte
+           (go eof))
+         (locally (declare (type (unsigned-byte 8) next-byte))
+           (cond
+             ((= next-byte (char-code #\Newline))
+              (fast-write-byte next-byte buf)
+              (go read-cr2))
+             ((= next-byte (char-code #\Return))
+              (fast-write-byte next-byte buf)
+              (go read-lf))
+             (T
+              (fast-write-byte next-byte buf)
+              (go read-cr)))))
 
      read-cr2
        (let ((next-byte (read-byte stream nil nil)))
-         (declare (type (or (unsigned-byte 8) null) next-byte))
-         (cond
-           ((null next-byte)
-            (go eof))
-           ((= next-byte (char-code #\Return))
-            (fast-write-byte next-byte buf)
-            (go read-lf2))
-           (T
-            (fast-write-byte next-byte buf)
-            (go read-cr))))
+         (unless next-byte
+           (go eof))
+         (locally (declare (type (unsigned-byte 8) next-byte))
+           (cond
+             ((= next-byte (char-code #\Return))
+              (fast-write-byte next-byte buf)
+              (go read-lf2))
+             (T
+              (fast-write-byte next-byte buf)
+              (go read-cr)))))
 
      read-lf2
        (let ((next-byte (read-byte stream nil nil)))
-         (declare (type (or (unsigned-byte 8) null) next-byte))
-         (cond
-           ((null next-byte)
-            (go eof))
-           ((= next-byte (char-code #\Newline))
-            (fast-write-byte next-byte buf))
-           ((= next-byte (char-code #\Return))
-            (fast-write-byte next-byte buf)
-            (go read-lf))
-           (T
-            (fast-write-byte next-byte buf)
-            (go read-cr))))
+         (unless next-byte
+           (go eof))
+         (locally (declare (type (unsigned-byte 8) next-byte))
+           (cond
+             ((= next-byte (char-code #\Newline))
+              (fast-write-byte next-byte buf))
+             ((= next-byte (char-code #\Return))
+              (fast-write-byte next-byte buf)
+              (go read-lf))
+             (T
+              (fast-write-byte next-byte buf)
+              (go read-cr)))))
 
      eof)))
 
