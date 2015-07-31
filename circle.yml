@@ -14,6 +14,7 @@ dependencies:
     - curl -L http://nginx.org/download/nginx-1.8.0.tar.gz | tar xzf -
     - (cd nginx-1.8.0 && ./configure --prefix=$HOME/nginx && make && make install)
   override:
+    - git clone https://github.com/fukamachi/proc-parse ~/lisp/proc-parse
     - git clone https://github.com/fukamachi/fast-http ~/lisp/fast-http
     - git clone https://github.com/fukamachi/quri ~/lisp/quri
     - git clone https://github.com/fukamachi/cl-cookie ~/lisp/cl-cookie
