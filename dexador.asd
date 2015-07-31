@@ -13,7 +13,7 @@
 (in-package :dexador-asd)
 
 (defsystem dexador
-  :version "0.9.5"
+  :version "0.9.6"
   :author "Eitaro Fukamachi"
   :license "MIT"
   :depends-on (:usocket
