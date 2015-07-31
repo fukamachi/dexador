@@ -123,6 +123,9 @@
 
      eof)))
 
+(defvar +empty-body+
+  (make-array 0 :element-type '(unsigned-byte 8)))
+
 (defun read-response (stream has-body collect-headers read-body)
   (let* ((http (make-http-response))
          body
@@ -160,11 +163,18 @@
       ((not read-body)
        (setq body stream))
       ((not has-body)
-       (setq body #.(make-array 0 :element-type '(unsigned-byte 8))))
+       (setq body +empty-body+))
       (content-length
        (let ((buf (make-array content-length :element-type '(unsigned-byte 8))))
          (read-sequence buf stream)
          (setq body buf)))
+      ((let ((status (http-status http)))
+         (or (= status 0)
+             (= status 100)    ;; Continue
+             (= status 101)    ;; Switching Protocols
+             (= status 204)    ;; No Content
+             (= status 304)))  ;; Not Modified
+       (setq body +empty-body+))
       (T
        (setq body-data (make-output-buffer))
        (loop for buf of-type octets = (read-until-crlf*2 stream)
