@@ -20,7 +20,8 @@ Similar to flexi-input-stream, except this uses Babel for decoding."))
 (in-package :dexador.decoding-stream)
 
 (declaim (type fixnum +buffer-size+))
-(defconstant +buffer-size+ 128)
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (defconstant +buffer-size+ 128))
 
 (defclass decoding-stream (fundamental-character-input-stream)
   ((stream :type stream
@@ -30,7 +31,7 @@ Similar to flexi-input-stream, except this uses Babel for decoding."))
    (encoding :initarg :encoding
              :initform (error ":encoding is required")
              :accessor decoding-stream-encoding)
-   (buffer :type (simple-array (unsigned-byte 8) #.+buffer-size+)
+   (buffer :type (simple-array (unsigned-byte 8) (#.+buffer-size+))
            :initform (make-array +buffer-size+ :element-type '(unsigned-byte 8))
            :accessor decoding-stream-buffer)
    (buffer-position :type fixnum
