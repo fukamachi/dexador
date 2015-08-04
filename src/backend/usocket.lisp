@@ -7,6 +7,8 @@
   (:import-from :dexador.connection-cache
                 :steal-connection
                 :push-connection)
+  (:import-from :dexador.decoding-stream
+                :make-decoding-stream)
   (:import-from :dexador.error
                 :http-request-failed
                 :http-request-not-found)
@@ -27,8 +29,6 @@
   (:import-from :chunga
                 :chunked-stream-input-chunking-p
                 :make-chunked-stream)
-  (:import-from :flexi-streams
-                :make-flexi-stream)
   (:import-from :trivial-mimes
                 :mime)
   (:import-from :cl-cookie
@@ -227,7 +227,7 @@
     (if charset
         (handler-case
             (if (streamp body)
-                (flex:make-flexi-stream body :external-format charset)
+                (make-decoding-stream body :encoding charset)
                 (babel:octets-to-string body :encoding charset))
           (error (e)
             (warn (format nil "Failed to decode the body to ~S due to the following error (falling back to binary):~%  ~A"
@@ -341,15 +341,18 @@
                             force-binary
                             want-stream)
   (declare (ignorable ssl-key-file ssl-cert-file ssl-key-password)
-           (type float version))
+           (type single-float version)
+           (type fixnum max-redirects))
   (flet ((make-new-connection (uri)
            (let ((stream
                    (usocket:socket-stream
                     (usocket:socket-connect (uri-host uri)
                                             (uri-port uri)
                                             :timeout timeout
-                                            :element-type '(unsigned-byte 8)))))
-             (if (string= (uri-scheme uri) "https")
+                                            :element-type '(unsigned-byte 8))))
+                 (scheme (uri-scheme uri)))
+             (declare (type string scheme))
+             (if (string= scheme "https")
                  #+dexador-no-ssl
                  (error "SSL not supported. Remove :dexador-no-ssl from *features* to enable SSL.")
                  #-dexador-no-ssl
@@ -361,7 +364,7 @@
          (finalize-connection (stream connection-header uri)
            (if (or want-stream
                    (and keep-alive
-                        (or (and (= version 1.0)
+                        (or (and (= (the single-float version) 1.0)
                                  (equalp connection-header "keep-alive"))
                             (not (equalp connection-header "close")))))
                (push-connection (format nil "~A://~A"
@@ -397,13 +400,14 @@
                         (if header
                             (when (cdr header)
                               (write-header name (cdr header)))
-                            (write-header name value)))))
+                            (write-header name value)))
+                      (values)))
                (with-header-output (buffer)
                  (write-header* :user-agent #.*default-user-agent*)
                  (write-header* :host (uri-authority uri))
                  (write-header* :accept "*/*")
                  (when (and keep-alive
-                            (= version 1.0))
+                            (= (the single-float version) 1.0))
                    (write-header* :connection "keep-alive"))
                  (when basic-auth
                    (write-header* :authorization
@@ -419,13 +423,13 @@
                                    (multipart-content-length content boundary)))
                    (form-urlencoded-p
                     (write-header* :content-type "application/x-www-form-urlencoded")
-                    (write-header* :content-length (length content)))
+                    (write-header* :content-length (length (the string content))))
                    (t
                     (etypecase content
                       (null)
                       (string
                        (write-header* :content-type "text/plain")
-                       (write-header* :content-length (length (babel:string-to-octets content))))
+                       (write-header* :content-length (length (the (simple-array (unsigned-byte 8) *) (babel:string-to-octets content)))))
                       (pathname
                        (write-header* :content-type (mimes:mime content))
                        (if-let ((content-length (assoc :content-length headers :test #'string-equal)))

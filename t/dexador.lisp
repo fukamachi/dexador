@@ -185,11 +185,22 @@ body: \"Within a couple weeks of learning Lisp I found programming in any other 
     (lambda (env)
       (declare (ignore env))
       '(200 (:content-type "text/plain") ("hi")))
+  ;; decoding stream
   (let ((body (dex:get "http://localhost:4242/" :want-stream t :keep-alive nil)))
-    (is-type body 'stream)
+    (is-type body 'dexador.decoding-stream:decoding-stream
+             "body is a decoding stream")
+    (is (stream-element-type body) 'babel:unicode-char
+        "body is a character stream")
+    (let ((buf (make-string 2)))
+      (read-sequence buf body)
+      (is buf "hi")))
+  ;; binary stream
+  (let ((body (dex:get "http://localhost:4242/" :want-stream t :force-binary t :keep-alive nil)))
+    (is-type body 'stream "body is a stream")
+    (is (stream-element-type body) '(unsigned-byte 8)
+        "body is a octets stream")
     (let ((buf (make-array 2 :element-type '(unsigned-byte 8))))
       (read-sequence buf body)
-      (is (babel:octets-to-string buf) "hi"))
-    (ignore-errors (close body))))
+      (is (babel:octets-to-string buf) "hi"))))
 
 (finalize)

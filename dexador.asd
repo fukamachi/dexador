@@ -21,8 +21,8 @@
                :quri
                :fast-io
                :babel
+               :trivial-gray-streams
                :chunga
-               :flexi-streams
                :cl-ppcre
                :cl-cookie
                :trivial-mimes
@@ -37,10 +37,11 @@
                 ((:file "dexador" :depends-on ("backend" "error"))
                  (:file "encoding")
                  (:file "connection-cache")
+                 (:file "decoding-stream")
                  (:file "error")
                  (:file "util")
                  (:module "backend"
-                  :depends-on ("encoding" "connection-cache" "error" "util")
+                  :depends-on ("encoding" "connection-cache" "decoding-stream" "error" "util")
                   :components
                   ((:file "usocket"))))))
   :description "Yet another HTTP client for Common Lisp"
