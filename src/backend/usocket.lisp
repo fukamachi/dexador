@@ -153,12 +153,13 @@
                               :finish-callback
                               (lambda ()
                                 (setq finishedp t)))))
-    (loop for buf of-type octets = (read-until-crlf*2 stream)
-          do (when (and collect-headers
-                        (not header-finished-p))
-               (fast-write-sequence buf headers-data))
-             (funcall parser buf)
-          until header-finished-p)
+    (let ((buf (read-until-crlf*2 stream)))
+      (declare (type octets buf))
+      (when collect-headers
+        (fast-write-sequence buf headers-data))
+      (funcall parser buf))
+    (unless header-finished-p
+      (error "maybe invalid header"))
     (cond
       ((not read-body)
        (setq body stream))
