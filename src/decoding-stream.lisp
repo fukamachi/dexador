@@ -59,18 +59,16 @@ Similar to flexi-input-stream, except this uses Babel for decoding."))
     (declare (type (simple-array (unsigned-byte 8) (#.+buffer-size+)) buffer)
              (type fixnum buffer-position))
     (let ((to-read (- +buffer-size+ buffer-position)))
+      (declare (type fixnum to-read))
       (replace buffer buffer
                :start1 0
                :start2 buffer-position
                :end2 +buffer-size+)
       (setf buffer-position 0)
-      (loop for byte = (read-byte stream nil nil)
-            for i from to-read to (1- +buffer-size+)
-            if byte
-              do (setf (aref buffer i) byte)
-            else
-              do (setf buffer-end-position i)
-                 (return)))))
+      (let ((n (read-sequence buffer stream :start to-read)))
+        (declare (type fixnum n))
+        (unless (= n +buffer-size+)
+          (setf buffer-end-position n))))))
 
 (defun needs-to-fill-buffer-p (stream)
   (declare (optimize speed))
