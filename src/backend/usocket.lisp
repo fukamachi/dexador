@@ -7,6 +7,8 @@
   (:import-from :dexador.connection-cache
                 :steal-connection
                 :push-connection)
+  (:import-from :dexador.decoding-stream
+                :make-decoding-stream)
   (:import-from :dexador.error
                 :http-request-failed
                 :http-request-not-found)
@@ -27,8 +29,6 @@
   (:import-from :chunga
                 :chunked-stream-input-chunking-p
                 :make-chunked-stream)
-  (:import-from :flexi-streams
-                :make-flexi-stream)
   (:import-from :trivial-mimes
                 :mime)
   (:import-from :cl-cookie
@@ -227,7 +227,7 @@
     (if charset
         (handler-case
             (if (streamp body)
-                (flex:make-flexi-stream body :external-format charset)
+                (make-decoding-stream body :encoding charset)
                 (babel:octets-to-string body :encoding charset))
           (error (e)
             (warn (format nil "Failed to decode the body to ~S due to the following error (falling back to binary):~%  ~A"
