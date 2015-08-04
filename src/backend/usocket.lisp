@@ -513,7 +513,9 @@
 
                  (let ((location-uri (quri:uri (gethash "location" response-headers))))
                    (if (or (null (uri-host location-uri))
-                           (and (string= (uri-host location-uri)
+                           (and (string= (uri-scheme location-uri)
+                                         (uri-scheme uri))
+                                (string= (uri-host location-uri)
                                          (uri-host uri))
                                 (eql (uri-port location-uri)
                                      (uri-port uri))))
