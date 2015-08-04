@@ -364,7 +364,9 @@
                         (or (and (= version 1.0)
                                  (equalp connection-header "keep-alive"))
                             (not (equalp connection-header "close")))))
-               (push-connection (uri-authority uri) stream)
+               (push-connection (format nil "~A://~A"
+                                        (uri-scheme uri)
+                                        (uri-authority uri)) stream)
                (ignore-errors (close stream)))))
     (let* ((uri (if (quri:uri-p uri)
                     uri
@@ -380,7 +382,9 @@
                         content))
            (stream (or stream
                        (and use-connection-pool
-                            (steal-connection (uri-authority uri)))))
+                            (steal-connection (format nil "~A://~A"
+                                                      (uri-scheme uri)
+                                                      (uri-authority uri))))))
            (reusing-stream-p (not (null stream)))
            (stream (or stream
                        (make-new-connection uri)))
