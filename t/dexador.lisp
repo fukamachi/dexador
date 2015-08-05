@@ -4,7 +4,7 @@
         :prove))
 (in-package :dexador-test)
 
-(plan 7)
+(plan 8)
 
 (defmacro subtest-app (desc app &body body)
   `(clack.test:subtest-app ,desc ,app
@@ -74,6 +74,20 @@
         (dex:post "http://localhost:4242/301")
       (declare (ignore body))
       (is code 302))))
+
+(subtest "content-disposition"
+  (is (dexador.backend.usocket::content-disposition "upload" #P"data/plain-file.txt")
+      (format nil "Content-Disposition: form-data; name=\"upload\"; filename=plain-file.txt~C~C"
+              #\Return #\Newline)
+      "ASCII file name")
+  (is (dexador.backend.usocket::content-disposition "upload" #P"data/foo-あいうえお.txt")
+      (format nil "Content-Disposition: form-data; name=\"upload\"; filename*=UTF-8''foo-%E3%81%82%E3%81%84%E3%81%86%E3%81%88%E3%81%8A.txt~C~C"
+              #\Return #\Newline)
+      "UTF-8 file name")
+  (is (dexador.backend.usocket::content-disposition "title" "ignore")
+      (format nil "Content-Disposition: form-data; name=\"title\"~C~C"
+              #\Return #\Newline)
+      "string value"))
 
 (subtest-app "POST request"
     (lambda (env)

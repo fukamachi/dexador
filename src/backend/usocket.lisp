@@ -43,6 +43,7 @@
                 :uri-path
                 :uri-authority
                 :uri-scheme
+                :url-encode
                 :url-encode-params
                 :merge-uris)
   (:import-from :chipz
@@ -249,11 +250,17 @@
         (decode-body content-type body))))
 
 (defun content-disposition (key val)
-  (format nil "Content-Disposition: form-data; name=\"~A\"~:[~;~:*; filename=\"~A\"~]~C~C"
-          key
-          (and (pathnamep val)
-               (file-namestring val))
-          #\Return #\Newline))
+  (if (pathnamep val)
+      (let* ((val (file-namestring val))
+             (encoded (url-encode val :encoding :utf-8)))
+        (format nil "Content-Disposition: form-data; name=\"~A\"; ~:[filename*=UTF-8''~A~;filename=~A~]~C~C"
+                key
+                (string= val encoded)
+                encoded
+                #\Return #\Newline))
+      (format nil "Content-Disposition: form-data; name=\"~A\"~C~C"
+              key
+              #\Return #\Newline)))
 
 (defun-speedy multipart-content-length (content boundary)
   (declare (type simple-string boundary))
