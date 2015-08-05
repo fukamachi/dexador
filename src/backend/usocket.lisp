@@ -251,12 +251,16 @@
 
 (defun content-disposition (key val)
   (if (pathnamep val)
-      (let* ((val (file-namestring val))
-             (encoded (url-encode val :encoding :utf-8)))
-        (format nil "Content-Disposition: form-data; name=\"~A\"; ~:[filename*=UTF-8''~A~;filename=~A~]~C~C"
+      (let* ((filename (file-namestring val))
+             (utf8-filename-p (find-if (lambda (char)
+                                         (< 127 (char-code char)))
+                                       filename)))
+        (format nil "Content-Disposition: form-data; name=\"~A\"; ~:[filename=\"~A\"~;filename*=UTF-8''~A~]~C~C"
                 key
-                (string= val encoded)
-                encoded
+                utf8-filename-p
+                (if utf8-filename-p
+                    (url-encode filename :encoding :utf-8)
+                    filename)
                 #\Return #\Newline))
       (format nil "Content-Disposition: form-data; name=\"~A\"~C~C"
               key
