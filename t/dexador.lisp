@@ -4,7 +4,7 @@
         :prove))
 (in-package :dexador-test)
 
-(plan 8)
+(plan 9)
 
 (defmacro subtest-app (desc app &body body)
   `(clack.test:subtest-app ,desc ,app
@@ -220,5 +220,26 @@ body: \"Within a couple weeks of learning Lisp I found programming in any other 
     (let ((buf (make-array 2 :element-type '(unsigned-byte 8))))
       (read-sequence buf body)
       (is (babel:octets-to-string buf) "hi"))))
+
+(subtest-app "no body"
+    (lambda (env)
+      (let ((path (getf env :path-info)))
+        (if (string= path "/204")
+            '(204 () ())
+            '(200 () ()))))
+  ;; no Content-Length and no Transfer-Encoding
+  (multiple-value-bind (body status headers)
+      (dex:get "http://localhost:4242/")
+    (is body "")
+    (is status 200)
+    (is (gethash "content-length" headers) nil)
+    (is (gethash "transfer-encoding" headers) nil))
+  ;; 204 No Content
+  (multiple-value-bind (body status headers)
+      (dex:get "http://localhost:4242/204")
+    (is body "")
+    (is status 204)
+    (is (gethash "content-length" headers) nil)
+    (is (gethash "transfer-encoding" headers) nil)))
 
 (finalize)
