@@ -84,6 +84,9 @@
       (format nil "Content-Disposition: form-data; name=\"upload\"; filename=\"plain file.txt\"~C~C"
               #\Return #\Newline)
       "ASCII file name with space")
+  #+ecl
+  (skip 1 "UTF-8 pathname is not allowed on ECL")
+  #-ecl
   (is (dexador.backend.usocket::content-disposition "upload" #P"data/foo-あいうえお.txt")
       (format nil "Content-Disposition: form-data; name=\"upload\"; filename*=UTF-8''foo-%E3%81%82%E3%81%84%E3%81%86%E3%81%88%E3%81%8A.txt~C~C"
               #\Return #\Newline)
