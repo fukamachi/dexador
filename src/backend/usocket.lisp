@@ -359,7 +359,7 @@
                    (usocket:socket-stream
                     (usocket:socket-connect (uri-host uri)
                                             (uri-port uri)
-                                            :timeout timeout
+                                            #-ecl :timeout #-ecl timeout
                                             :element-type '(unsigned-byte 8))))
                  (scheme (uri-scheme uri)))
              (declare (type string scheme))
