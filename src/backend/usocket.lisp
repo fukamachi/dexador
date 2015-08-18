@@ -523,8 +523,15 @@
                           (gethash "location" response-headers)
                           (/= max-redirects 0))
                  ;; Need to read the response body
-                 (when want-stream
-                   (loop while (read-byte body nil nil)))
+                 (when (and want-stream
+                            (not (eq method :head)))
+                   (let ((content-length (gethash "content-length" response-headers)))
+                     (cond
+                       ((integerp content-length)
+                        (dotimes (i content-length)
+                          (loop until (read-byte body nil nil))))
+                       (transfer-encoding-p
+                        (read-until-crlf*2 body)))))
 
                  (let ((location-uri (quri:uri (gethash "location" response-headers))))
                    (if (or (null (uri-host location-uri))

@@ -4,7 +4,7 @@
         :prove))
 (in-package :dexador-test)
 
-(plan 9)
+(plan 10)
 
 (defmacro subtest-app (desc app &body body)
   `(clack.test:subtest-app ,desc ,app
@@ -220,6 +220,15 @@ body: \"Within a couple weeks of learning Lisp I found programming in any other 
     (let ((buf (make-array 2 :element-type '(unsigned-byte 8))))
       (read-sequence buf body)
       (is (babel:octets-to-string buf) "hi"))))
+
+(subtest-app "redirection for want-stream"
+    (lambda (env)
+      (if (string= (getf env :path-info) "/index.html")
+          '(200 () ("ok"))
+          '(307 (:location "/index.html"
+                 :transfer-encoding "chunked") (""))))
+  (let ((body (dex:get "http://localhost:4242/" :want-stream t)))
+    (ok body)))
 
 (subtest-app "no body"
     (lambda (env)
