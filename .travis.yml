@@ -26,6 +26,7 @@ addons:
       - libc6-i386
       - default-jre
       - clisp
+      - libffi-dev
 
 install:
   # Roswell
