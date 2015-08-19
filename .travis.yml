@@ -15,11 +15,7 @@ env:
 addons:
   apt:
     packages:
-      - libc6-i386
       - default-jre
-      - clisp
-      - libc6-dev-i386
-      - libffi-dev
 
 install:
   # Roswell
