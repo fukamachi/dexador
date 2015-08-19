@@ -116,7 +116,7 @@
   `(progn
      ,(if (and (constantp name)
                (typep name '(or keyword string)))
-          `(fast-write-sequence ,(ascii-string-to-octets (string-capitalize name)) ,buffer)
+          `(fast-write-sequence (ascii-string-to-octets ,(string-capitalize name)) ,buffer)
           `(write-header-field ,name ,buffer))
      (fast-write-sequence (ascii-string-to-octets ": ") ,buffer)
      ,(if (constantp value)
