@@ -35,6 +35,7 @@ install:
   - (cd nginx-1.8.0 && ./configure --prefix=$HOME/nginx && make && make install)
   # Libraries to use the latest version
   - git clone https://github.com/Rudolph-Miller/jonathan ~/lisp/jonathan
+  - git clone https://github.com/fukamachi/clack
   # prove
   - ros install prove
 
