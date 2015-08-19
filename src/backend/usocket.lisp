@@ -351,7 +351,8 @@
                             stream verbose
                             force-binary
                             want-stream)
-  (declare (ignorable ssl-key-file ssl-cert-file ssl-key-password)
+  (declare (ignorable ssl-key-file ssl-cert-file ssl-key-password
+                      timeout)
            (type single-float version)
            (type fixnum max-redirects))
   (flet ((make-new-connection (uri)
@@ -359,7 +360,7 @@
                    (usocket:socket-stream
                     (usocket:socket-connect (uri-host uri)
                                             (uri-port uri)
-                                            #-ecl :timeout #-ecl timeout
+                                            #-(or ecl clisp) :timeout #-(or ecl clisp) timeout
                                             :element-type '(unsigned-byte 8))))
                  (scheme (uri-scheme uri)))
              (declare (type string scheme))
