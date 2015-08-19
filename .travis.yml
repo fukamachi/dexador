@@ -1,5 +1,5 @@
 language: common-lisp
-sudo: false
+sudo: required
 
 env:
   global:
@@ -9,16 +9,14 @@ env:
   matrix:
     - LISP=sbcl-bin COVERALLS=true
     - LISP=ccl-bin
-    - LISP=abcl JVM_OPTS="-Xmx4g -XX:MaxPermSize=1g"
+    - LISP=abcl
     - LISP=clisp
     - LISP=ecl
-    - LISP=allegro
     - LISP=cmucl
 
 matrix:
   allow_failures:
-    # 'clisp' requires 'sudo' because it's not in the whitelist of APT packages.
-    - env: LISP=clisp
+    - LISP=cmucl
 
 addons:
   apt:
@@ -28,11 +26,10 @@ addons:
       - clisp
       - libc6-dev-i386
       - libffi-dev
-      - libgcc4:i386
 
 install:
   # Roswell
-  - curl -L https://raw.githubusercontent.com/snmsts/roswell/master/scripts/install-for-ci.sh | sh
+  - curl -L https://raw.githubusercontent.com/fukamachi/roswell/abcl-opts/scripts/install-for-ci.sh | sh
   # nginx
   - curl -L http://nginx.org/download/nginx-1.8.0.tar.gz | tar xzf -
   - (cd nginx-1.8.0 && ./configure --prefix=$HOME/nginx && make && make install)
