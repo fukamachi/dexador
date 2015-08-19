@@ -288,10 +288,10 @@
 (defun write-multipart-content (content boundary stream)
   (let ((boundary (ascii-string-to-octets boundary)))
     (labels ((boundary-line (&optional endp)
-               (write-sequence #.(ascii-string-to-octets "--") stream)
+               (write-sequence (ascii-string-to-octets "--") stream)
                (write-sequence boundary stream)
                (when endp
-                 (write-sequence #.(ascii-string-to-octets "--") stream))
+                 (write-sequence (ascii-string-to-octets "--") stream))
                (crlf))
              (crlf () (write-sequence +crlf+ stream)))
       (loop for (key . val) in content
@@ -334,7 +334,7 @@
     (let ((cookies (cookie-jar-host-cookies cookie-jar (uri-host uri) (or (uri-path uri) "/")
                                             :securep (string= (uri-scheme uri) "https"))))
       (when cookies
-        (fast-write-sequence #.(ascii-string-to-octets "Cookie: ") buffer)
+        (fast-write-sequence (ascii-string-to-octets "Cookie: ") buffer)
         (fast-write-sequence
          (ascii-string-to-octets (write-cookie-header cookies))
          buffer)

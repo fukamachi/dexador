@@ -45,13 +45,21 @@
 
 (declaim (ftype (function (simple-string) octets) ascii-string-to-octets))
 (eval-when (:compile-toplevel :load-toplevel :execute)
-  (defun-speedy ascii-string-to-octets (string)
+  (defun-speedy %ascii-string-to-octets (string)
     (let ((result (make-array (length string) :element-type '(unsigned-byte 8))))
       (declare (type octets result))
       (dotimes (i (length string) result)
         (declare (type fixnum i))
         (setf (aref result i)
               (char-code (aref string i))))))
+
+  (defun-speedy ascii-string-to-octets (string)
+    (%ascii-string-to-octets string))
+
+  (define-compiler-macro ascii-string-to-octets (&whole form string)
+    (if (constantp string)
+        (%ascii-string-to-octets string)
+        form))
 
   (declaim (type octets +crlf+))
   (defvar +crlf+ (ascii-string-to-octets (format nil "~C~C" #\Return #\Newline))))
@@ -81,8 +89,8 @@
                        buffer)
   (fast-write-byte #.(char-code #\Space) buffer)
   (fast-write-sequence (ecase version
-                         (1.1 #.(ascii-string-to-octets "HTTP/1.1"))
-                         (1.0 #.(ascii-string-to-octets "HTTP/1.0")))
+                         (1.1 (ascii-string-to-octets "HTTP/1.1"))
+                         (1.0 (ascii-string-to-octets "HTTP/1.0")))
                        buffer)
   (fast-write-sequence +crlf+ buffer))
 
@@ -100,7 +108,7 @@
 
 (defun write-header (name value &optional (buffer *header-buffer*))
   (write-header-field name buffer)
-  (fast-write-sequence #.(ascii-string-to-octets ": ") buffer)
+  (fast-write-sequence (ascii-string-to-octets ": ") buffer)
   (write-header-value value buffer)
   (fast-write-sequence +crlf+ buffer))
 
@@ -110,9 +118,9 @@
                (typep name '(or keyword string)))
           `(fast-write-sequence ,(ascii-string-to-octets (string-capitalize name)) ,buffer)
           `(write-header-field ,name ,buffer))
-     (fast-write-sequence ,(ascii-string-to-octets ": ") ,buffer)
+     (fast-write-sequence (ascii-string-to-octets ": ") ,buffer)
      ,(if (constantp value)
-          `(fast-write-sequence ,(ascii-string-to-octets (string value)) ,buffer)
+          `(fast-write-sequence (ascii-string-to-octets ,(string value)) ,buffer)
           `(write-header-value ,value ,buffer))
      (fast-write-sequence +crlf+ ,buffer)))
 
