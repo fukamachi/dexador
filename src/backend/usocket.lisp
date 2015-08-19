@@ -288,10 +288,10 @@
 (defun write-multipart-content (content boundary stream)
   (let ((boundary (ascii-string-to-octets boundary)))
     (labels ((boundary-line (&optional endp)
-               (write-sequence #.(ascii-string-to-octets "--") stream)
+               (write-sequence (ascii-string-to-octets "--") stream)
                (write-sequence boundary stream)
                (when endp
-                 (write-sequence #.(ascii-string-to-octets "--") stream))
+                 (write-sequence (ascii-string-to-octets "--") stream))
                (crlf))
              (crlf () (write-sequence +crlf+ stream)))
       (loop for (key . val) in content
@@ -334,7 +334,7 @@
     (let ((cookies (cookie-jar-host-cookies cookie-jar (uri-host uri) (or (uri-path uri) "/")
                                             :securep (string= (uri-scheme uri) "https"))))
       (when cookies
-        (fast-write-sequence #.(ascii-string-to-octets "Cookie: ") buffer)
+        (fast-write-sequence (ascii-string-to-octets "Cookie: ") buffer)
         (fast-write-sequence
          (ascii-string-to-octets (write-cookie-header cookies))
          buffer)
@@ -351,7 +351,8 @@
                             stream verbose
                             force-binary
                             want-stream)
-  (declare (ignorable ssl-key-file ssl-cert-file ssl-key-password)
+  (declare (ignorable ssl-key-file ssl-cert-file ssl-key-password
+                      timeout)
            (type single-float version)
            (type fixnum max-redirects))
   (flet ((make-new-connection (uri)
@@ -359,7 +360,7 @@
                    (usocket:socket-stream
                     (usocket:socket-connect (uri-host uri)
                                             (uri-port uri)
-                                            :timeout timeout
+                                            #-(or ecl clisp) :timeout #-(or ecl clisp) timeout
                                             :element-type '(unsigned-byte 8))))
                  (scheme (uri-scheme uri)))
              (declare (type string scheme))

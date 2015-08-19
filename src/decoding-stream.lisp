@@ -3,7 +3,9 @@
   (:use :cl)
   (:import-from :trivial-gray-streams
                 :fundamental-character-input-stream
-                :stream-read-char)
+                :stream-read-char
+                :stream-read-byte
+                :stream-read-sequence)
   (:import-from :babel
                 :*string-vector-mappings*
                 :unicode-char)
@@ -101,6 +103,19 @@ Similar to flexi-input-stream, except this uses Babel for decoding."))
                    buffer buffer-position new-end string 0)
           (setf buffer-position new-end)
           (aref string 0))))))
+
+#+(or abcl ecl)
+(defmethod stream-read-sequence ((stream decoding-stream) sequence start end &key)
+  (loop for i from start to end
+        for char = (stream-read-char stream)
+        if (eq char :eof)
+          do (return i)
+        else do (setf (aref sequence i) char)
+        finally (return end)))
+
+#+ecl
+(defmethod stream-read-byte ((stream decoding-stream))
+  (read-byte (decoding-stream-stream stream) nil :eof))
 
 (defmethod open-stream-p ((stream decoding-stream))
   (open-stream-p (decoding-stream-stream stream)))

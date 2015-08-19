@@ -1,39 +1,51 @@
 (in-package :cl-user)
 (defpackage dexador-test
   (:use :cl
-        :prove))
+        :prove)
+  (:import-from :clack.test
+                :*clack-test-port*
+                :port-available-p
+                :localhost))
 (in-package :dexador-test)
 
 (plan 10)
 
+(defun random-port ()
+  "Return a port number not in use from 50000 to 60000."
+  (loop for port from (+ 50000 (random 1000)) upto 60000
+        if (clack.test::port-available-p port)
+          return port))
+
 (defmacro subtest-app (desc app &body body)
-  `(clack.test:subtest-app ,desc ,app
-     (dex:clear-connection-pool)
-     ,@body))
+  `(let ((*clack-test-port* (random-port)))
+     (clack.test:subtest-app ,desc ,app
+       (dex:clear-connection-pool)
+       (sleep 1)
+       ,@body)))
 
 (subtest-app "normal case"
     (lambda (env)
       `(200 (:content-length ,(length (getf env :request-uri))) (,(getf env :request-uri))))
   (subtest "GET"
     (multiple-value-bind (body code headers)
-        (dex:get "http://localhost:4242/foo"
+        (dex:get (localhost "/foo")
                  :headers '((:x-foo . "ppp")))
       (is code 200)
       (is body "/foo")
       (is (gethash "content-length" headers) 4)))
   (subtest "HEAD"
     (multiple-value-bind (body code)
-        (dex:head "http://localhost:4242/foo")
+        (dex:head (localhost "/foo"))
       (is code 200)
       (is body "")))
   (subtest "PUT"
     (multiple-value-bind (body code)
-        (dex:put "http://localhost:4242/foo")
+        (dex:put (localhost "/foo"))
       (is code 200)
       (is body "/foo")))
   (subtest "DELETE"
     (multiple-value-bind (body code)
-        (dex:delete "http://localhost:4242/foo")
+        (dex:delete (localhost "/foo"))
       (is code 200)
       (is body "/foo"))))
 
@@ -50,28 +62,28 @@
              `(200 (:content-length ,(length method))
                    (,method))))
           (T
-           `(302 (:location ,(format nil "http://localhost:4242/~D" (1+ id))) ())))))
+           `(302 (:location ,(format nil "/~D" (1+ id))) ())))))
   (subtest "redirect"
     (multiple-value-bind (body code headers)
-        (dex:get "http://localhost:4242/1")
+        (dex:get (localhost "/1"))
       (is code 200)
       (is body "OK")
       (is (gethash "content-length" headers) 2)))
   (subtest "not enough redirect"
     (multiple-value-bind (body code headers)
-        (dex:get "http://localhost:4242/1" :max-redirects 0)
+        (dex:get (localhost "/1") :max-redirects 0)
       (declare (ignore body))
       (is code 302)
-      (is (gethash "location" headers) "http://localhost:4242/2")))
+      (is (gethash "location" headers) "/2")))
   (subtest "exceed max redirect"
     (multiple-value-bind (body code headers)
-        (dex:get "http://localhost:4242/4" :max-redirects 7)
+        (dex:get (localhost "/4") :max-redirects 7)
       (declare (ignore body))
       (is code 302)
-      (is (gethash "location" headers) "http://localhost:4242/12")))
+      (is (gethash "location" headers) "/12")))
   (subtest "Don't redirect POST"
     (multiple-value-bind (body code)
-        (dex:post "http://localhost:4242/301")
+        (dex:post (localhost "/301"))
       (declare (ignore body))
       (is code 302))))
 
@@ -84,6 +96,9 @@
       (format nil "Content-Disposition: form-data; name=\"upload\"; filename=\"plain file.txt\"~C~C"
               #\Return #\Newline)
       "ASCII file name with space")
+  #+ecl
+  (skip 1 "UTF-8 pathname is not allowed on ECL")
+  #-ecl
   (is (dexador.backend.usocket::content-disposition "upload" #P"data/foo-あいうえお.txt")
       (format nil "Content-Disposition: form-data; name=\"upload\"; filename*=UTF-8''foo-%E3%81%82%E3%81%84%E3%81%86%E3%81%88%E3%81%8A.txt~C~C"
               #\Return #\Newline)
@@ -117,7 +132,7 @@
                                           v))))))))))
   (subtest "content in alist"
     (multiple-value-bind (body code headers)
-        (dex:post "http://localhost:4242/"
+        (dex:post (localhost)
                   :content '(("name" . "Eitaro")
                              ("email" . "e.arrows@gmail.com")))
       (declare (ignore headers))
@@ -127,7 +142,7 @@ email: e.arrows@gmail.com
 ")))
   (subtest "multipart"
     (multiple-value-bind (body code)
-        (dex:post "http://localhost:4242/"
+        (dex:post (localhost)
                   :content `(("title" . "Road to Lisp")
                              ("body" . ,(asdf:system-relative-pathname :dexador #P"t/data/quote.txt"))))
       (is code 200)
@@ -138,7 +153,7 @@ body: \"Within a couple weeks of learning Lisp I found programming in any other 
 ")))
   (subtest "upload"
     (multiple-value-bind (body code)
-        (dex:post "http://localhost:4242/upload"
+        (dex:post (localhost "/upload")
                   :content (asdf:system-relative-pathname :dexador #P"t/data/quote.txt"))
       (is code 200)
       (is body "\"Within a couple weeks of learning Lisp I found programming in any other language unbearably constraining.\" -- Paul Graham, Road to Lisp
@@ -151,7 +166,7 @@ body: \"Within a couple weeks of learning Lisp I found programming in any other 
           '(500 () ("Internal Server Error"))))
   (handler-case
       (progn
-        (dex:get "http://localhost:4242/")
+        (dex:get (localhost))
         (fail "Must raise an error DEX:HTTP-REQUEST-FAILED"))
     (dex:http-request-failed (e)
       (pass "Raise DEX:HTTP-REQUEST-FAILED error")
@@ -161,7 +176,7 @@ body: \"Within a couple weeks of learning Lisp I found programming in any other 
           "response body is \"Internal Server Error\"")))
   (handler-case
       (progn
-        (dex:get "http://localhost:4242/404")
+        (dex:get (localhost "/404"))
         (fail "Must raise an error DEX:HTTP-REQUEST-NOT-FOUND"))
     (dex:http-request-not-found (e)
       (pass "Raise DEX:HTTP-REQUEST-FAILED error")
@@ -182,29 +197,29 @@ body: \"Within a couple weeks of learning Lisp I found programming in any other 
             '("ok")))
   (let ((cookie-jar (cl-cookie:make-cookie-jar)))
     (is (length (cl-cookie:cookie-jar-cookies cookie-jar)) 0 "0 cookies")
-    (dex:head "http://localhost:4242/" :cookie-jar cookie-jar)
+    (dex:head (localhost) :cookie-jar cookie-jar)
     (is (length (cl-cookie:cookie-jar-cookies cookie-jar)) 2 "2 cookies")
-    (dex:head "http://localhost:4242/" :cookie-jar cookie-jar))
+    (dex:head (localhost) :cookie-jar cookie-jar))
 
   ;; 302
   (let ((cookie-jar (cl-cookie:make-cookie-jar)))
     (is (length (cl-cookie:cookie-jar-cookies cookie-jar)) 0 "0 cookies")
-    (dex:head "http://localhost:4242/302" :cookie-jar cookie-jar)
+    (dex:head (localhost "/302") :cookie-jar cookie-jar)
     (is (length (cl-cookie:cookie-jar-cookies cookie-jar)) 2 "2 cookies")
-    (dex:head "http://localhost:4242/302" :cookie-jar cookie-jar)))
+    (dex:head (localhost "/302") :cookie-jar cookie-jar)))
 
 (subtest-app "verbose"
     (lambda (env)
       (declare (ignore env))
       '(200 () ("ok")))
-  (ok (dex:get "http://localhost:4242/" :verbose t)))
+  (ok (dex:get (localhost) :verbose t)))
 
 (subtest-app "want-stream"
     (lambda (env)
       (declare (ignore env))
       '(200 (:content-type "text/plain") ("hi")))
   ;; decoding stream
-  (let ((body (dex:get "http://localhost:4242/" :want-stream t :keep-alive nil)))
+  (let ((body (dex:get (localhost) :want-stream t :keep-alive nil)))
     (is-type body 'dexador.decoding-stream:decoding-stream
              "body is a decoding stream")
     (is (stream-element-type body) 'babel:unicode-char
@@ -213,7 +228,7 @@ body: \"Within a couple weeks of learning Lisp I found programming in any other 
       (read-sequence buf body)
       (is buf "hi")))
   ;; binary stream
-  (let ((body (dex:get "http://localhost:4242/" :want-stream t :force-binary t :keep-alive nil)))
+  (let ((body (dex:get (localhost) :want-stream t :force-binary t :keep-alive nil)))
     (is-type body 'stream "body is a stream")
     (is (stream-element-type body) '(unsigned-byte 8)
         "body is a octets stream")
@@ -227,7 +242,7 @@ body: \"Within a couple weeks of learning Lisp I found programming in any other 
           '(200 () ("ok"))
           '(307 (:location "/index.html"
                  :transfer-encoding "chunked") (""))))
-  (let ((body (dex:get "http://localhost:4242/" :want-stream t)))
+  (let ((body (dex:get (localhost) :want-stream t)))
     (ok body)))
 
 (subtest-app "no body"
@@ -238,14 +253,14 @@ body: \"Within a couple weeks of learning Lisp I found programming in any other 
             '(200 () ()))))
   ;; no Content-Length and no Transfer-Encoding
   (multiple-value-bind (body status headers)
-      (dex:get "http://localhost:4242/")
+      (dex:get (localhost))
     (is body "")
     (is status 200)
     (is (gethash "content-length" headers) nil)
     (is (gethash "transfer-encoding" headers) nil))
   ;; 204 No Content
   (multiple-value-bind (body status headers)
-      (dex:get "http://localhost:4242/204")
+      (dex:get (localhost "/204"))
     (is body "")
     (is status 204)
     (is (gethash "content-length" headers) nil)
