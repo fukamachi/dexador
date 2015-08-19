@@ -35,8 +35,9 @@ install:
   - (cd nginx-1.8.0 && ./configure --prefix=$HOME/nginx && make && make install)
   # Libraries to use the latest version
   - git clone https://github.com/Rudolph-Miller/jonathan ~/lisp/jonathan
-  - git clone -b fix-clack-test-for-abcl https://github.com/fukamachi/clack ~/lisp/clack
+  - git clone https://github.com/fukamachi/clack ~/lisp/clack
   - git clone https://github.com/rpav/fast-io ~/lisp/fast-io
+  - git clone https://github.com/fukamachi/quri ~/lisp/quri
   # prove
   - ros install prove
 
