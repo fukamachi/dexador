@@ -35,8 +35,9 @@ install:
   - (cd nginx-1.8.0 && ./configure --prefix=$HOME/nginx && make && make install)
   # Libraries to use the latest version
   - git clone https://github.com/Rudolph-Miller/jonathan ~/lisp/jonathan
+  - git clone https://github.com/fukamachi/prove ~/lisp/prove
   # prove
-  - ros install prove
+  - ros -l ~/lisp/prove/prove.asd install prove
 
 cache:
   directories:
