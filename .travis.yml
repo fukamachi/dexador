@@ -10,13 +10,7 @@ env:
     - LISP=sbcl-bin COVERALLS=true
     - LISP=ccl-bin
     - LISP=abcl
-    - LISP=clisp
     - LISP=ecl
-    - LISP=cmucl
-
-matrix:
-  allow_failures:
-    - LISP=cmucl
 
 addons:
   apt:
