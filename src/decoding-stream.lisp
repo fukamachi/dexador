@@ -104,7 +104,7 @@ Similar to flexi-input-stream, except this uses Babel for decoding."))
           (setf buffer-position new-end)
           (aref string 0))))))
 
-#+abcl
+#+(or abcl ecl)
 (defmethod stream-read-sequence ((stream decoding-stream) sequence start end &key)
   (loop for i from start to end
         for char = (stream-read-char stream)
