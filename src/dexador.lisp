@@ -76,11 +76,8 @@
                        :direction :output :element-type '(unsigned-byte 8)
                        :if-exists if-exists
                        :if-does-not-exist :create)
-    (multiple-value-bind (body status headers)
-        (dex:get uri :want-stream t :force-binary t :keep-alive nil)
-      (declare (ignore status))
-      (alexandria:copy-stream body out
-                              :end (gethash "content-length" headers)))))
+    (let ((body (dex:get uri :want-stream t :force-binary t)))
+      (alexandria:copy-stream body out))))
 
 (defun ignore-and-continue (e)
   (let ((restart (find-restart 'ignore-and-continue e)))
