@@ -4,6 +4,7 @@
   (:import-from :trivial-gray-streams
                 :fundamental-character-input-stream
                 :stream-read-char
+                :stream-unread-char
                 :stream-read-byte
                 :stream-read-sequence)
   (:import-from :babel
@@ -41,7 +42,13 @@ Similar to flexi-input-stream, except this uses Babel for decoding."))
                     :accessor decoding-stream-buffer-position)
    (buffer-end-position :type fixnum
                         :initform -1
-                        :accessor decoding-stream-buffer-end-position)))
+                        :accessor decoding-stream-buffer-end-position)
+   (last-char :type character
+              :initform #\Nul
+              :accessor decoding-stream-last-char)
+   (last-char-size :type fixnum
+                   :initform 0
+                   :accessor decoding-stream-last-char-size)))
 
 (defmethod initialize-instance :after ((stream decoding-stream) &rest initargs)
   (declare (ignore initargs))
@@ -91,18 +98,34 @@ Similar to flexi-input-stream, except this uses Babel for decoding."))
            (the fixnum (decoding-stream-buffer-position stream)))
     (return-from stream-read-char :eof))
 
-  (with-slots (buffer buffer-position encoding) stream
+  (with-slots (buffer buffer-position encoding last-char last-char-size)
+      stream
     (let* ((mapping (lookup-mapping *string-vector-mappings* encoding))
            (counter (code-point-counter mapping)))
       (declare (type function counter))
       (multiple-value-bind (size new-end)
           (funcall counter buffer buffer-position +buffer-size+ 1)
-        (declare (ignore size))
         (let ((string (make-string 1 :element-type 'babel:unicode-char)))
           (funcall (the function (babel-encodings:decoder mapping))
                    buffer buffer-position new-end string 0)
-          (setf buffer-position new-end)
+          (setf buffer-position new-end
+                last-char (aref string 0)
+                last-char-size size)
           (aref string 0))))))
+
+(defmethod stream-unread-char ((stream decoding-stream) char)
+  (let ((last-char (decoding-stream-last-char stream)))
+    (when (char= last-char #\Nul)
+      (error "No character to unread from this stream"))
+    (unless (char= char last-char)
+      (error "Last character read (~S) was different from ~S"
+             last-char char))
+    (with-slots (buffer-position last-char-size) stream
+      (decf buffer-position last-char-size))
+    (with-slots (last-char last-char-size) stream
+      (setf last-char #\Nul
+            last-char-size 0))
+    nil))
 
 #+(or abcl ecl)
 (defmethod stream-read-sequence ((stream decoding-stream) sequence start end &key)
@@ -115,6 +138,9 @@ Similar to flexi-input-stream, except this uses Babel for decoding."))
 
 #+ecl
 (defmethod stream-read-byte ((stream decoding-stream))
+  (with-slots (last-char last-char-size) stream
+    (setf last-char #\Nul
+          last-char-size 0))
   (read-byte (decoding-stream-stream stream) nil :eof))
 
 (defmethod open-stream-p ((stream decoding-stream))
