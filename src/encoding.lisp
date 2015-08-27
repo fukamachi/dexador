@@ -12,7 +12,7 @@
 (defun parse-content-type (content-type)
   (let ((types
           (nth-value 1
-                     (ppcre:scan-to-strings "^\\s*?(\\w+)/(\\w+)(?:\\s*;\\s*charset=([A-Za-z0-9_-]+))?"
+                     (ppcre:scan-to-strings "^\\s*?(\\w+)/([^;\\s]+)(?:\\s*;\\s*charset=([A-Za-z0-9_-]+))?"
                                             content-type))))
     (when types
       (values (aref types 0)
@@ -38,6 +38,7 @@
   (multiple-value-bind (type subtype charset)
       (parse-content-type content-type)
     (cond
+      ((charset-to-encoding charset nil))
       ((string-equal type "text")
        (charset-to-encoding charset))
       ((and (string-equal type "application")
@@ -46,4 +47,7 @@
        ;; JSON text SHALL be encoded in Unicode. The default encoding is UTF-8.
        ;; It's possible to determine if the encoding is UTF-16 or UTF-36
        ;; by looking at the first four octets, however, I leave it to the future.
-       (charset-to-encoding charset :utf-8)))))
+       (charset-to-encoding charset :utf-8))
+      ((and (string-equal type "application")
+            (ppcre:scan "(?:[^+]+\\+)?xml" subtype))
+       (charset-to-encoding charset)))))
