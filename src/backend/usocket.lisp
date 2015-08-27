@@ -232,7 +232,7 @@
             (if (streamp body)
                 (make-decoding-stream body :encoding charset)
                 (babel:octets-to-string body :encoding charset))
-          (error (e)
+          (babel:character-decoding-error (e)
             (warn (format nil "Failed to decode the body to ~S due to the following error (falling back to binary):~%  ~A"
                           charset
                           e))
