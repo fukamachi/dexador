@@ -306,6 +306,14 @@ This function signals `http-request-failed` when the HTTP status code is 4xx or 
                   stream verbose)
 ```
 
+### \[Function\] fetch
+
+Send a GET request to `URI` and write the response body to the `DESTINATION`.
+
+```common-lisp
+(dex:fetch uri destination &key if-exists)
+```
+
 ## Benchmark
 
 ![Benchmark graph](images/benchmark.png)

@@ -15,12 +15,15 @@
                 :clear-connection-pool)
   (:import-from :dexador.util
                 :*default-timeout*)
+  (:import-from :alexandria
+                :copy-stream)
   (:export :request
            :get
            :post
            :head
            :put
            :delete
+           :fetch
            :*default-timeout*
            :*connection-pool*
            :*use-connection-pool*
@@ -67,6 +70,17 @@
                  ssl-key-file ssl-cert-file ssl-key-password stream verbose)
   (declare (ignore version headers basic-auth cookie-jar keep-alive use-connection-pool timeout force-binary want-stream ssl-key-file ssl-cert-file ssl-key-password stream verbose))
   (apply #'request uri :method :delete args))
+
+(defun fetch (uri destination &key (if-exists :error))
+  (with-open-file (out destination
+                       :direction :output :element-type '(unsigned-byte 8)
+                       :if-exists if-exists
+                       :if-does-not-exist :create)
+    (multiple-value-bind (body status headers)
+        (dex:get uri :want-stream t :force-binary t)
+      (declare (ignore status))
+      (alexandria:copy-stream body out
+                              :end (gethash "content-length" headers)))))
 
 (defun ignore-and-continue (e)
   (let ((restart (find-restart 'ignore-and-continue e)))
