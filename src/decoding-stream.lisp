@@ -34,6 +34,8 @@ Similar to flexi-input-stream, except this uses Babel for decoding."))
    (encoding :initarg :encoding
              :initform (error ":encoding is required")
              :accessor decoding-stream-encoding)
+   (end :initarg :end
+        :initform nil)
    (buffer :type (simple-array (unsigned-byte 8) (#.+buffer-size+))
            :initform (make-array +buffer-size+ :element-type '(unsigned-byte 8))
            :accessor decoding-stream-buffer)
@@ -56,16 +58,18 @@ Similar to flexi-input-stream, except this uses Babel for decoding."))
     (when (keywordp encoding)
       (setf encoding (get-character-encoding encoding)))))
 
-(defun make-decoding-stream (stream &key (encoding babel-encodings:*default-character-encoding*))
+(defun make-decoding-stream (stream &key (encoding babel-encodings:*default-character-encoding*)
+                                      end)
   (let ((decoding-stream (make-instance 'decoding-stream
                                         :stream stream
-                                        :encoding encoding)))
+                                        :encoding encoding
+                                        :end end)))
     (fill-buffer decoding-stream)
     decoding-stream))
 
 (defun fill-buffer (stream)
   (declare (optimize speed))
-  (with-slots (stream buffer buffer-position buffer-end-position) stream
+  (with-slots (stream buffer buffer-position buffer-end-position end) stream
     (declare (type (simple-array (unsigned-byte 8) (#.+buffer-size+)) buffer)
              (type fixnum buffer-position))
     (let ((to-read (- +buffer-size+ buffer-position)))
@@ -75,7 +79,7 @@ Similar to flexi-input-stream, except this uses Babel for decoding."))
                :start2 buffer-position
                :end2 +buffer-size+)
       (setf buffer-position 0)
-      (let ((n (read-sequence buffer stream :start to-read)))
+      (let ((n (read-sequence buffer stream :start to-read :end end)))
         (declare (type fixnum n))
         (unless (= n +buffer-size+)
           (setf buffer-end-position n))))))
