@@ -38,10 +38,11 @@
                  (:file "encoding")
                  (:file "connection-cache")
                  (:file "decoding-stream")
+                 (:file "keep-alive-stream")
                  (:file "error")
                  (:file "util")
                  (:module "backend"
-                  :depends-on ("encoding" "connection-cache" "decoding-stream" "error" "util")
+                  :depends-on ("encoding" "connection-cache" "decoding-stream" "keep-alive-stream" "error" "util")
                   :components
                   ((:file "usocket"))))))
   :description "Yet another HTTP client for Common Lisp"

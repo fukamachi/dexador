@@ -311,7 +311,7 @@ This function signals `http-request-failed` when the HTTP status code is 4xx or 
 Send a GET request to `URI` and write the response body to the `DESTINATION`.
 
 ```common-lisp
-(dex:fetch uri destination &key if-exists)
+(dex:fetch uri destination &key if-exists verbose)
 ```
 
 ## Benchmark

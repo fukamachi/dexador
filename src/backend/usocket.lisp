@@ -9,6 +9,8 @@
                 :push-connection)
   (:import-from :dexador.decoding-stream
                 :make-decoding-stream)
+  (:import-from :dexador.keep-alive-stream
+                :make-keep-alive-stream)
   (:import-from :dexador.error
                 :http-request-failed
                 :http-request-not-found)
@@ -230,14 +232,23 @@
             (if (streamp body)
                 (make-decoding-stream body :encoding charset)
                 (babel:octets-to-string body :encoding charset))
-          (error (e)
+          (babel:character-decoding-error (e)
             (warn (format nil "Failed to decode the body to ~S due to the following error (falling back to binary):~%  ~A"
                           charset
                           e))
             (return-from decode-body body)))
         body)))
 
-(defun convert-body (body content-encoding content-type chunkedp force-binary)
+(defun convert-body (body content-encoding content-type content-length chunkedp force-binary keep-alive-p)
+  (when (and (streamp body)
+             keep-alive-p)
+    (cond
+      (content-length
+       (setf body
+              (make-keep-alive-stream body :end content-length)))
+      (chunkedp
+       (setf body
+             (make-keep-alive-stream body :chunked t)))))
   (let ((body (decompress-body content-encoding
                                (if (and (streamp body)
                                         chunkedp)
@@ -355,34 +366,36 @@
                       timeout)
            (type single-float version)
            (type fixnum max-redirects))
-  (flet ((make-new-connection (uri)
-           (let ((stream
-                   (usocket:socket-stream
-                    (usocket:socket-connect (uri-host uri)
-                                            (uri-port uri)
-                                            #-(or ecl clisp) :timeout #-(or ecl clisp) timeout
-                                            :element-type '(unsigned-byte 8))))
-                 (scheme (uri-scheme uri)))
-             (declare (type string scheme))
-             (if (string= scheme "https")
-                 #+dexador-no-ssl
-                 (error "SSL not supported. Remove :dexador-no-ssl from *features* to enable SSL.")
-                 #-dexador-no-ssl
-                 (cl+ssl:make-ssl-client-stream stream
-                                                :certificate ssl-cert-file
-                                                :key ssl-key-file
-                                                :password ssl-key-password)
-                 stream)))
-         (finalize-connection (stream connection-header uri)
-           (if (or want-stream
-                   (and keep-alive
-                        (or (and (= (the single-float version) 1.0)
-                                 (equalp connection-header "keep-alive"))
-                            (not (equalp connection-header "close")))))
-               (push-connection (format nil "~A://~A"
-                                        (uri-scheme uri)
-                                        (uri-authority uri)) stream)
-               (ignore-errors (close stream)))))
+  (labels ((make-new-connection (uri)
+             (let ((stream
+                     (usocket:socket-stream
+                      (usocket:socket-connect (uri-host uri)
+                                              (uri-port uri)
+                                              #-(or ecl clisp) :timeout #-(or ecl clisp) timeout
+                                              :element-type '(unsigned-byte 8))))
+                   (scheme (uri-scheme uri)))
+               (declare (type string scheme))
+               (if (string= scheme "https")
+                   #+dexador-no-ssl
+                   (error "SSL not supported. Remove :dexador-no-ssl from *features* to enable SSL.")
+                   #-dexador-no-ssl
+                   (cl+ssl:make-ssl-client-stream stream
+                                                  :certificate ssl-cert-file
+                                                  :key ssl-key-file
+                                                  :password ssl-key-password)
+                   stream)))
+           (connection-keep-alive-p (connection-header)
+             (and keep-alive
+                  (or (and (= (the single-float version) 1.0)
+                           (equalp connection-header "keep-alive"))
+                      (not (equalp connection-header "close")))))
+           (finalize-connection (stream connection-header uri)
+             (if (or want-stream
+                     (connection-keep-alive-p connection-header))
+                 (push-connection (format nil "~A://~A"
+                                          (uri-scheme uri)
+                                          (uri-authority uri)) stream)
+                 (ignore-errors (close stream)))))
     (let* ((uri (if (quri:uri-p uri)
                     uri
                     (quri:uri uri)))
@@ -573,8 +586,11 @@
                (let ((body (convert-body body
                                          (gethash "content-encoding" response-headers)
                                          (gethash "content-type" response-headers)
+                                         (gethash "content-length" response-headers)
                                          transfer-encoding-p
-                                         force-binary)))
+                                         force-binary
+                                         (connection-keep-alive-p
+                                          (gethash "connection" response-headers)))))
                  ;; Raise an error when the HTTP response status code is 4xx or 50x.
                  (when (<= 400 status)
                    (http-request-failed-with-restarts status
