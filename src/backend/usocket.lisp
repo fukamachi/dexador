@@ -418,9 +418,13 @@
                  (write-header* :user-agent #.*default-user-agent*)
                  (write-header* :host (uri-authority uri))
                  (write-header* :accept "*/*")
-                 (when (and keep-alive
-                            (= (the single-float version) 1.0))
-                   (write-header* :connection "keep-alive"))
+                 (cond
+                   ((and keep-alive
+                         (= (the single-float version) 1.0))
+                    (write-header* :connection "keep-alive"))
+                   ((and (not keep-alive)
+                         (= (the single-float version) 1.1))
+                    (write-header* :connection "close")))
                  (when basic-auth
                    (write-header* :authorization
                                   (format nil "Basic ~A"

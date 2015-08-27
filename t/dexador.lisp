@@ -8,7 +8,7 @@
                 :localhost))
 (in-package :dexador-test)
 
-(plan 10)
+(plan 11)
 
 (defun random-port ()
   "Return a port number not in use from 50000 to 60000."
@@ -265,5 +265,14 @@ body: \"Within a couple weeks of learning Lisp I found programming in any other 
     (is status 204)
     (is (gethash "content-length" headers) nil)
     (is (gethash "transfer-encoding" headers) nil)))
+
+(subtest-app "keep-alive nil"
+    (lambda (env)
+      (declare (ignore env))
+      '(200 () ("hi")))
+  (let ((headers (nth-value 2 (dex:get (localhost)))))
+    (is (gethash "connection" headers) nil))
+  (let ((headers (nth-value 2 (dex:get (localhost) :keep-alive nil))))
+    (is (gethash "connection" headers) "close" :test #'equalp)))
 
 (finalize)
