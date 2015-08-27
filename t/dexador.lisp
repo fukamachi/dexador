@@ -266,4 +266,22 @@ body: \"Within a couple weeks of learning Lisp I found programming in any other 
     (is (gethash "content-length" headers) nil)
     (is (gethash "transfer-encoding" headers) nil)))
 
+(defvar *json* "{\"name\":\"Eitaro Fukamachi\",\"name_ja\":\"深町英太郎\",\"login\":true}")
+(subtest-app "JSON"
+    (lambda (env)
+      (declare (ignore env))
+      `(200 (:content-type "application/json") (,*json*)))
+  (multiple-value-bind (body status)
+      (dex:get (localhost))
+    (is body *json*
+        "JSON is returned as a string")
+    (is status 200))
+  (let ((babel:*default-character-encoding* :cp932))
+    ;; Test if the JSON encoding
+    (multiple-value-bind (body status)
+        (dex:get (localhost))
+      (is body *json*
+          "The default encoding is UTF-8 though babel:*default-character-encoding* is different")
+      (is status 200))))
+
 (finalize)
