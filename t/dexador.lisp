@@ -8,7 +8,7 @@
                 :localhost))
 (in-package :dexador-test)
 
-(plan 10)
+(plan 12)
 
 (defun random-port ()
   "Return a port number not in use from 50000 to 60000."
@@ -283,5 +283,14 @@ body: \"Within a couple weeks of learning Lisp I found programming in any other 
       (is body *json*
           "The default encoding is UTF-8 though babel:*default-character-encoding* is different")
       (is status 200))))
+
+(subtest-app "keep-alive nil"
+    (lambda (env)
+      (declare (ignore env))
+      '(200 () ("hi")))
+  (let ((headers (nth-value 2 (dex:get (localhost)))))
+    (is (gethash "connection" headers) nil))
+  (let ((headers (nth-value 2 (dex:get (localhost) :keep-alive nil))))
+    (is (gethash "connection" headers) "close" :test #'equalp)))
 
 (finalize)

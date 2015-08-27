@@ -77,7 +77,7 @@
                        :if-exists if-exists
                        :if-does-not-exist :create)
     (multiple-value-bind (body status headers)
-        (dex:get uri :want-stream t :force-binary t)
+        (dex:get uri :want-stream t :force-binary t :keep-alive nil)
       (declare (ignore status))
       (alexandria:copy-stream body out
                               :end (gethash "content-length" headers)))))
