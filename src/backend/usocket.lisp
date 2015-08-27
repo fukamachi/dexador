@@ -222,13 +222,13 @@
          (chipz:decompress nil (chipz:make-dstate :deflate) body)))
     (T body)))
 
-(defun decode-body (content-type body)
+(defun decode-body (content-type content-length body)
   (let ((charset (and content-type
                       (detect-charset content-type))))
     (if charset
         (handler-case
             (if (streamp body)
-                (make-decoding-stream body :encoding charset)
+                (make-decoding-stream body :encoding charset :end content-length)
                 (babel:octets-to-string body :encoding charset))
           (error (e)
             (warn (format nil "Failed to decode the body to ~S due to the following error (falling back to binary):~%  ~A"
@@ -237,7 +237,7 @@
             (return-from decode-body body)))
         body)))
 
-(defun convert-body (body content-encoding content-type chunkedp force-binary)
+(defun convert-body (body content-encoding content-type content-length chunkedp force-binary)
   (let ((body (decompress-body content-encoding
                                (if (and (streamp body)
                                         chunkedp)
@@ -247,7 +247,7 @@
                                    body))))
     (if force-binary
         body
-        (decode-body content-type body))))
+        (decode-body content-type content-length body))))
 
 (defun content-disposition (key val)
   (if (pathnamep val)
@@ -573,6 +573,7 @@
                (let ((body (convert-body body
                                          (gethash "content-encoding" response-headers)
                                          (gethash "content-type" response-headers)
+                                         (gethash "content-length" response-headers)
                                          transfer-encoding-p
                                          force-binary)))
                  ;; Raise an error when the HTTP response status code is 4xx or 50x.
