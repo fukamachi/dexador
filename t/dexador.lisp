@@ -140,6 +140,20 @@
       (is body "name: Eitaro
 email: e.arrows@gmail.com
 ")))
+  (subtest "string content"
+    (multiple-value-bind (body code headers)
+        (dex:post (localhost "/upload")
+                  :content "this is string data")
+      (declare (ignore headers))
+      (is code 200)
+      (is body "this is string data")))
+  (subtest "octets content"
+    (multiple-value-bind (body code headers)
+        (dex:post (localhost "/upload")
+                  :content (babel:string-to-octets "this is octet data"))
+      (declare (ignore headers))
+      (is code 200)
+      (is body "this is octet data")))
   (subtest "multipart"
     (multiple-value-bind (body code)
         (dex:post (localhost)

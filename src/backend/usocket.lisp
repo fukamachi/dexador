@@ -459,6 +459,9 @@
                       (string
                        (write-header* :content-type "text/plain")
                        (write-header* :content-length (length (the (simple-array (unsigned-byte 8) *) (babel:string-to-octets content)))))
+                      ((array (unsigned-byte 8) *)
+                       (write-header* :content-type "text/plain")
+                       (write-header* :content-length (length content)))
                       (pathname
                        (write-header* :content-type (mimes:mime content))
                        (if-let ((content-length (assoc :content-length headers :test #'string-equal)))
@@ -499,6 +502,8 @@
            (when content
              (etypecase content
                (string (write-sequence (babel:string-to-octets content) stream))
+               ((array (unsigned-byte 8) *)
+                (write-sequence content stream))
                (pathname (with-open-file (in content :element-type '(unsigned-byte 8))
                            (copy-stream in stream)))
                (cons
