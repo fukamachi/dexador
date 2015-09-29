@@ -168,7 +168,7 @@
        (setq body stream))
       ((not has-body)
        (setq body +empty-body+))
-      (content-length
+      ((and content-length (not transfer-encoding-p))
        (let ((buf (make-array content-length :element-type '(unsigned-byte 8))))
          (read-sequence buf stream)
          (setq body buf)))
@@ -243,12 +243,12 @@
   (when (and (streamp body)
              keep-alive-p)
     (cond
-      (content-length
-       (setf body
-              (make-keep-alive-stream body :end content-length)))
       (chunkedp
        (setf body
-             (make-keep-alive-stream body :chunked t)))))
+             (make-keep-alive-stream body :chunked t)))
+      (content-length
+       (setf body
+              (make-keep-alive-stream body :end content-length)))))
   (let ((body (decompress-body content-encoding
                                (if (and (streamp body)
                                         chunkedp)
