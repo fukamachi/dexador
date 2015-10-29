@@ -8,7 +8,7 @@
                 :localhost))
 (in-package :dexador-test)
 
-(plan 12)
+(plan 14)
 
 (defun random-port ()
   "Return a port number not in use from 50000 to 60000."
@@ -306,5 +306,21 @@ body: \"Within a couple weeks of learning Lisp I found programming in any other 
     (is (gethash "connection" headers) nil))
   (let ((headers (nth-value 2 (dex:get (localhost) :keep-alive nil))))
     (is (gethash "connection" headers) "close" :test #'equalp)))
+
+(subtest-app "deflate compression"
+    (lambda (env)
+      (declare (ignore env))
+      `(200 (:content-encoding "deflate" :content-type "text/plain")
+            ,(asdf:system-relative-pathname :dexador #p"t/data/test.zlib")))
+  (let ((body (dex:get (localhost))))
+    (is body "Deflate test string." :test #'string=)))
+
+(subtest-app "gzip compression"
+    (lambda (env)
+      (declare (ignore env))
+      `(200 (:content-encoding "gzip" :content-type "text/plain")
+            ,(asdf:system-relative-pathname :dexador #p"t/data/test.gz")))
+  (let ((body (dex:get (localhost))))
+    (is body "Gzip test string." :test #'string=)))
 
 (finalize)
