@@ -220,8 +220,8 @@
          (chipz:decompress nil (chipz:make-dstate :gzip) body)))
     ((string= content-encoding "deflate")
      (if (streamp body)
-         (chipz:make-decompressing-stream :deflate body)
-         (chipz:decompress nil (chipz:make-dstate :deflate) body)))
+         (chipz:make-decompressing-stream :zlib body)
+         (chipz:decompress nil (chipz:make-dstate :zlib) body)))
     (T body)))
 
 (defun decode-body (content-type body)
