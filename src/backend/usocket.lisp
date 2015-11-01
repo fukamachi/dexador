@@ -30,6 +30,8 @@
                 :fast-write-byte)
   (:import-from :chunga
                 :chunked-stream-input-chunking-p
+                :chunked-stream-output-chunking-p
+                :chunked-stream-stream
                 :make-chunked-stream)
   (:import-from :trivial-mimes
                 :mime)
@@ -401,6 +403,7 @@
                     (quri:uri uri)))
            (multipart-p (and (consp content)
                              (find-if #'pathnamep content :key #'cdr)))
+           (chunked-p (streamp content))
            (form-urlencoded-p (and (consp content)
                                    (not multipart-p)))
            (boundary (and multipart-p
@@ -453,6 +456,8 @@
                    (form-urlencoded-p
                     (write-header* :content-type "application/x-www-form-urlencoded")
                     (write-header* :content-length (length (the string content))))
+                   (chunked-p
+                     (write-header* :transfer-encoding "chunked"))
                    (t
                     (etypecase content
                       (null)
@@ -473,7 +478,7 @@
                  (loop for (name . value) in headers
                        unless (member name '(:user-agent :host :accept
                                              :connection
-                                             :content-type :content-length) :test #'string-equal)
+                                             :content-length) :test #'string-equal)
                          do (write-header name value)))))
            (cookie-headers (and cookie-jar
                                 (build-cookie-headers uri cookie-jar))))
@@ -498,6 +503,10 @@
            (write-sequence +crlf+ stream)
            (with-retrying (force-output stream))
 
+           (when chunked-p
+             (setf stream (make-chunked-stream stream))
+             (setf (chunked-stream-output-chunking-p stream) t))
+
            ;; Sending the content
            (when content
              (etypecase content
@@ -506,9 +515,15 @@
                 (write-sequence content stream))
                (pathname (with-open-file (in content :element-type '(unsigned-byte 8))
                            (copy-stream in stream)))
+               (stream
+                 (copy-stream content stream))
                (cons
                 (write-multipart-content content boundary stream)))
              (with-retrying (force-output stream)))
+
+           (when chunked-p
+             (setf (chunked-stream-output-chunking-p stream) nil)
+             (setf stream (chunked-stream-stream stream)))
 
          start-reading
            (multiple-value-bind (http body response-headers-data transfer-encoding-p)
