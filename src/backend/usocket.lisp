@@ -403,7 +403,9 @@
                     (quri:uri uri)))
            (multipart-p (and (consp content)
                              (find-if #'pathnamep content :key #'cdr)))
-           (chunked-p (streamp content))
+           (content-length (cdr (assoc :content-length headers :test #'string-equal)))
+           (chunked-p (and (streamp content)
+                           (null content-length)))
            (form-urlencoded-p (and (consp content)
                                    (not multipart-p)))
            (boundary (and multipart-p
@@ -477,8 +479,7 @@
                  ;; Custom headers
                  (loop for (name . value) in headers
                        unless (member name '(:user-agent :host :accept
-                                             :connection
-                                             :content-length) :test #'string-equal)
+                                             :connection) :test #'string-equal)
                          do (write-header name value)))))
            (cookie-headers (and cookie-jar
                                 (build-cookie-headers uri cookie-jar))))
@@ -516,7 +517,7 @@
                (pathname (with-open-file (in content :element-type '(unsigned-byte 8))
                            (copy-stream in stream)))
                (stream
-                 (copy-stream content stream))
+                (copy-stream content stream :end content-length))
                (cons
                 (write-multipart-content content boundary stream)))
              (with-retrying (force-output stream)))
