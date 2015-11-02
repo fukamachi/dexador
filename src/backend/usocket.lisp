@@ -459,6 +459,7 @@
                     (write-header* :content-type "application/x-www-form-urlencoded")
                     (write-header* :content-length (length (the string content))))
                    (chunked-p
+                     (write-header* :content-type "application/octet-stream")
                      (write-header* :transfer-encoding "chunked"))
                    (t
                     (etypecase content
@@ -469,6 +470,9 @@
                       ((array (unsigned-byte 8) *)
                        (write-header* :content-type "text/plain")
                        (write-header* :content-length (length content)))
+                      (stream
+                        (write-header* :content-type "application/octet-stream")
+                        (write-header* :content-length content-length))
                       (pathname
                        (write-header* :content-type (mimes:mime content))
                        (if-let ((content-length (assoc :content-length headers :test #'string-equal)))
@@ -479,7 +483,8 @@
                  ;; Custom headers
                  (loop for (name . value) in headers
                        unless (member name '(:user-agent :host :accept
-                                             :connection) :test #'string-equal)
+                                             :connection
+                                             :content-type :content-length) :test #'string-equal)
                          do (write-header name value)))))
            (cookie-headers (and cookie-jar
                                 (build-cookie-headers uri cookie-jar))))
