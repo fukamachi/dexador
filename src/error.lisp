@@ -61,11 +61,12 @@
   `(define-condition ,(intern (format nil "~A-~A" :http-request name)) (http-request-failed)
      ()
      (:report (lambda (condition stream)
-                (with-slots (uri) condition
-                  (format stream ,(format nil "An HTTP request to ~~S returned ~D ~A."
+                (with-slots (body uri) condition
+                  (format stream ,(format nil "An HTTP request to ~~S returned ~D ~A.~~2%~~A"
                                           code
                                           (substitute #\Space #\- (string-downcase name)))
-                          (quri:render-uri uri)))))))
+                          (quri:render-uri uri)
+                          body))))))
 
 
 (defvar *request-failed-error* (make-hash-table :test 'eql))
