@@ -72,12 +72,14 @@
   (apply #'request uri :method :delete args))
 
 (defun fetch (uri destination &key (if-exists :error) verbose)
-  (with-open-file (out destination
-                       :direction :output :element-type '(unsigned-byte 8)
-                       :if-exists if-exists
-                       :if-does-not-exist :create)
-    (let ((body (dex:get uri :want-stream t :force-binary t :verbose verbose)))
-      (alexandria:copy-stream body out))))
+  (unless (and (eql if-exists nil)
+               (probe-file destination))
+    (with-open-file (out destination
+                         :direction :output :element-type '(unsigned-byte 8)
+                         :if-exists if-exists
+                         :if-does-not-exist :create)
+      (let ((body (dex:get uri :want-stream t :force-binary t :verbose verbose)))
+        (alexandria:copy-stream body out)))))
 
 (defun ignore-and-continue (e)
   (let ((restart (find-restart 'ignore-and-continue e)))
