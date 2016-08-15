@@ -600,7 +600,7 @@
                  (when (<= 400 status)
                    (http-request-failed-with-restarts status
                                                       :body body
-                                                      :headers headers
+                                                      :headers response-headers
                                                       :uri uri))
                  (return-from request
                    (values body
