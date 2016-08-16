@@ -176,8 +176,8 @@ body: \"Within a couple weeks of learning Lisp I found programming in any other 
 (subtest-app "HTTP request failed"
     (lambda (env)
       (if (string= (getf env :path-info) "/404")
-          '(404 () ("Not Found"))
-          '(500 () ("Internal Server Error"))))
+          '(404 (:x-foo 0) ("Not Found"))
+          '(500 (:x-bar 1) ("Internal Server Error"))))
   (handler-case
       (progn
         (dex:get (localhost))
@@ -187,7 +187,8 @@ body: \"Within a couple weeks of learning Lisp I found programming in any other 
       (is (dex:response-status e) 500
           "response status is 500")
       (is (dex:response-body e) "Internal Server Error"
-          "response body is \"Internal Server Error\"")))
+          "response body is \"Internal Server Error\"")
+      (is (gethash "x-bar" (dex:response-headers e)) 1)))
   (handler-case
       (progn
         (dex:get (localhost "/404"))
@@ -197,7 +198,8 @@ body: \"Within a couple weeks of learning Lisp I found programming in any other 
       (is (dex:response-status e) 404
           "response status is 404")
       (is (dex:response-body e) "Not Found"
-          "response body is \"Not Found\""))))
+          "response body is \"Not Found\"")
+      (is (gethash "x-foo" (dex:response-headers e)) 0))))
 
 (subtest-app "Using cookies"
     (lambda (env)
