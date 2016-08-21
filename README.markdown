@@ -211,7 +211,7 @@ All functions take similar arguments.
   - The HTTP request method: `:GET`, `:HEAD`, `:OPTIONS`, `:PUT`, `:POST`, or `:DELETE`. The default is `:GET`.
 - `version` (number)
   - The version of the HTTP protocol: typically `1.0` or `1.1`. The default is `1.1`.
-- `content` (string, alist or pathname)
+- `content` (string, alist, octet vector, stream, or pathname)
   - The body of the request.
 - `headers` (alist)
   - The headers of the request. If the value of a pair is `NIL`, the header won't be sent. You can overwrite the default headers (Host, User-Agent and Accept) by this with the same header name.

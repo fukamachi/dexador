@@ -30,6 +30,8 @@
                 :fast-write-byte)
   (:import-from :chunga
                 :chunked-stream-input-chunking-p
+                :chunked-stream-output-chunking-p
+                :chunked-stream-stream
                 :make-chunked-stream)
   (:import-from :trivial-mimes
                 :mime)
@@ -401,6 +403,9 @@
                     (quri:uri uri)))
            (multipart-p (and (consp content)
                              (find-if #'pathnamep content :key #'cdr)))
+           (content-length (cdr (assoc :content-length headers :test #'string-equal)))
+           (chunked-p (and (streamp content)
+                           (null content-length)))
            (form-urlencoded-p (and (consp content)
                                    (not multipart-p)))
            (boundary (and multipart-p
@@ -453,6 +458,9 @@
                    (form-urlencoded-p
                     (write-header* :content-type "application/x-www-form-urlencoded")
                     (write-header* :content-length (length (the string content))))
+                   (chunked-p
+                     (write-header* :content-type "application/octet-stream")
+                     (write-header* :transfer-encoding "chunked"))
                    (t
                     (etypecase content
                       (null)
@@ -462,6 +470,9 @@
                       ((array (unsigned-byte 8) *)
                        (write-header* :content-type "text/plain")
                        (write-header* :content-length (length content)))
+                      (stream
+                        (write-header* :content-type "application/octet-stream")
+                        (write-header* :content-length content-length))
                       (pathname
                        (write-header* :content-type (mimes:mime content))
                        (if-let ((content-length (assoc :content-length headers :test #'string-equal)))
@@ -498,6 +509,10 @@
            (write-sequence +crlf+ stream)
            (with-retrying (force-output stream))
 
+           (when chunked-p
+             (setf stream (make-chunked-stream stream))
+             (setf (chunked-stream-output-chunking-p stream) t))
+
            ;; Sending the content
            (when content
              (etypecase content
@@ -506,9 +521,15 @@
                 (write-sequence content stream))
                (pathname (with-open-file (in content :element-type '(unsigned-byte 8))
                            (copy-stream in stream)))
+               (stream
+                (copy-stream content stream :end content-length))
                (cons
                 (write-multipart-content content boundary stream)))
              (with-retrying (force-output stream)))
+
+           (when chunked-p
+             (setf (chunked-stream-output-chunking-p stream) nil)
+             (setf stream (chunked-stream-stream stream)))
 
          start-reading
            (multiple-value-bind (http body response-headers-data transfer-encoding-p)
