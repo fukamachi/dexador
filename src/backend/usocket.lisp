@@ -30,6 +30,7 @@
                 :fast-write-byte)
   (:import-from :chunga
                 :chunked-stream-input-chunking-p
+                :chunked-stream-output-chunking-p
                 :make-chunked-stream)
   (:import-from :trivial-mimes
                 :mime)
@@ -416,6 +417,14 @@
            (reusing-stream-p (not (null stream)))
            (stream (or stream
                        (make-new-connection uri)))
+           (content-length
+             (assoc :content-length headers :test #'string-equal))
+           (transfer-encoding
+             (assoc :transfer-encoding headers :test #'string-equal))
+           (chunkedp (or (and transfer-encoding
+                              (equalp (cdr transfer-encoding) "chunked"))
+                         (and content-length
+                              (null (cdr content-length)))))
            (first-line-data
              (with-fast-output (buffer)
                (write-first-line method uri version buffer)))
@@ -448,26 +457,36 @@
                  (cond
                    (multipart-p
                     (write-header* :content-type (format nil "multipart/form-data; boundary=~A" boundary))
-                    (write-header* :content-length
-                                   (multipart-content-length content boundary)))
+                    (unless chunkedp
+                      (write-header* :content-length
+                                     (multipart-content-length content boundary))))
                    (form-urlencoded-p
                     (write-header* :content-type "application/x-www-form-urlencoded")
-                    (write-header* :content-length (length (the string content))))
+                    (unless chunkedp
+                      (write-header* :content-length (length (the string content)))))
                    (t
                     (etypecase content
                       (null)
                       (string
                        (write-header* :content-type "text/plain")
-                       (write-header* :content-length (length (the (simple-array (unsigned-byte 8) *) (babel:string-to-octets content)))))
+                       (unless chunkedp
+                         (write-header* :content-length (length (the (simple-array (unsigned-byte 8) *) (babel:string-to-octets content))))))
                       ((array (unsigned-byte 8) *)
                        (write-header* :content-type "text/plain")
-                       (write-header* :content-length (length content)))
+                       (unless chunkedp
+                         (write-header* :content-length (length content))))
                       (pathname
                        (write-header* :content-type (mimes:mime content))
-                       (if-let ((content-length (assoc :content-length headers :test #'string-equal)))
-                         (write-header :content-length (cdr content-length))
-                         (with-open-file (in content)
-                           (write-header :content-length (file-length in))))))))
+                       (unless chunkedp
+                         (if-let ((content-length (assoc :content-length headers :test #'string-equal)))
+                           (write-header :content-length (cdr content-length))
+                           (with-open-file (in content)
+                             (write-header :content-length (file-length in)))))))))
+
+                 ;; Transfer-Encoding: chunked
+                 (when (and chunkedp
+                            (not transfer-encoding))
+                   (write-header* :transfer-encoding "chunked"))
 
                  ;; Custom headers
                  (loop for (name . value) in headers
@@ -500,15 +519,23 @@
 
            ;; Sending the content
            (when content
-             (etypecase content
-               (string (write-sequence (babel:string-to-octets content) stream))
-               ((array (unsigned-byte 8) *)
-                (write-sequence content stream))
-               (pathname (with-open-file (in content :element-type '(unsigned-byte 8))
-                           (copy-stream in stream)))
-               (cons
-                (write-multipart-content content boundary stream)))
-             (with-retrying (force-output stream)))
+             (let ((stream (if chunkedp
+                                (chunga:make-chunked-stream stream)
+                                stream)))
+               (when chunkedp
+                 (setf (chunga:chunked-stream-output-chunking-p stream) t))
+               (etypecase content
+                 (string
+                  (write-sequence (babel:string-to-octets content) stream))
+                 ((array (unsigned-byte 8) *)
+                  (write-sequence content stream))
+                 (pathname (with-open-file (in content :element-type '(unsigned-byte 8))
+                             (copy-stream in stream)))
+                 (cons
+                  (write-multipart-content content boundary stream)))
+               (when chunkedp
+                 (setf (chunga:chunked-stream-output-chunking-p stream) nil))
+               (with-retrying (finish-output stream))))
 
          start-reading
            (multiple-value-bind (http body response-headers-data transfer-encoding-p)
