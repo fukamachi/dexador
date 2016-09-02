@@ -12,6 +12,10 @@ env:
     - LISP=abcl
     - LISP=ecl
 
+matrix:
+  allow_failures:
+    - env: LISP=ccl-bin
+
 addons:
   apt:
     packages:
