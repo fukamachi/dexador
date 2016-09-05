@@ -68,10 +68,11 @@
 
 (defmethod stream-read-sequence ((stream keep-alive-stream) sequence start end &key)
   (declare (optimize speed))
-  (let ((n (read-sequence sequence (keep-alive-stream-stream stream)
-                          :start start
-                          :end (min end (keep-alive-stream-end stream)))))
-    (decf (keep-alive-stream-end stream) n)
+  (let* ((to-read (min (- end start) (keep-alive-stream-end stream)))
+         (n (read-sequence sequence (keep-alive-stream-stream stream)
+                           :start start
+                           :end (+ start to-read))))
+    (decf (keep-alive-stream-end stream) (- n start))
     n))
 
 (defmethod stream-read-sequence ((stream keep-alive-chunked-stream) sequence start end &key)
