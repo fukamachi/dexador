@@ -8,7 +8,7 @@
                 :localhost))
 (in-package :dexador-test)
 
-(plan 14)
+(plan 15)
 
 (defun random-port ()
   "Return a port number not in use from 50000 to 60000."
@@ -251,6 +251,21 @@ body: \"Within a couple weeks of learning Lisp I found programming in any other 
     (let ((buf (make-array 2 :element-type '(unsigned-byte 8))))
       (read-sequence buf body)
       (is (babel:octets-to-string buf) "hi"))))
+
+(subtest-app "big body with want-stream"
+    (lambda (env)
+      (declare (ignore env))
+      `(200 (:content-type "application/json; charset=utf-8"
+             :content-length 748)
+            ("[{\"name\":\"allow-statement-in-has-a\",\"commit\":{\"sha\":\"d58b3c96503786c64eb2dba22980ebb14010bdbf\",\"url\":\"https://api.github.com/repos/fukamachi/datafly/commits/d58b3c96503786c64eb2dba22980ebb14010bdbf\"}},{\"name\":\"fix-has-a\",\"commit\":{\"sha\":\"4bcea61e84402317ab49605918972983a1511e6a\",\"url\":\"https://api.github.com/repos/fukamachi/datafly/commits/4bcea61e84402317ab49605918972983a1511e6a\"}},{\"name\":\"jojo\",\"commit\":{\"sha\":\"d2b753e7fdd0dbeada9721380cf410186a85535b\",\"url\":\"https://api.github.com/repos/fukamachi/datafly/commits/d2b753e7fdd0dbeada9721380cf410186a85535b\"}},{\"name\":\"master\",\"commit\":{\"sha\":\"d2b753e7fdd0dbeada9721380cf410186a85535b\",\"url\":\"https://api.github.com/repos/fukamachi/datafly/commits/d2b753e7fdd0dbeada9721380cf410186a85535b\"}}]")))
+  ;; decoding stream
+  (let ((body (dex:get (localhost) :want-stream t)))
+    (is-type body 'dexador.decoding-stream:decoding-stream
+             "body is a decoding stream")
+    (is (stream-element-type body) 'babel:unicode-char
+        "body is a character stream")
+    (let ((buf (make-string 1024)))
+      (is (read-sequence buf body) 748))))
 
 (subtest-app "redirection for want-stream"
     (lambda (env)
