@@ -9,26 +9,13 @@ Dexador is yet another HTTP client for Common Lisp with neat APIs and connection
 
 This software is still BETA quality. The APIs will be likely to change.
 
-We'd pretty appreciate your feedback. When you find a bug, please check out the latest version of Dexador before reporting an issue.
-
-```
-$ cd ~/common-lisp
-$ git clone https://github.com/fukamachi/dexador
-$ git clone https://github.com/fukamachi/cl-cookie
-```
-
-After that, check if you're using the local copies by `ql:where-is-system`.
-
-```common-lisp
-(ql:where-is-system :dexador)
-;=> #P"/Users/nitro_idiot/common-lisp/dexador/"
-```
-
 ## Differences from Drakma
 
 * Fast, particularly when requesting to the same host (See [Benchmark](#benchmark))
 * Neat APIs
 * Signal a condition when HTTP request failed
+
+See also [a presentation given at Lisp Meetup #31](http://www.slideshare.net/fukamachi/dexador-rises).
 
 ## Usage
 
