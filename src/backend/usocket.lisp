@@ -381,6 +381,7 @@
                    (error "SSL not supported. Remove :dexador-no-ssl from *features* to enable SSL.")
                    #-dexador-no-ssl
                    (cl+ssl:make-ssl-client-stream stream
+                                                  :hostname (uri-host uri)
                                                   :certificate ssl-cert-file
                                                   :key ssl-key-file
                                                   :password ssl-key-password)
