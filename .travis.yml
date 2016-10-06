@@ -23,7 +23,7 @@ addons:
 
 install:
   # Roswell
-  - curl -L https://raw.githubusercontent.com/snmsts/roswell/master/scripts/install-for-ci.sh | sh
+  - curl -L https://raw.githubusercontent.com/roswell/roswell/release/scripts/install-for-ci.sh | sh
   # nginx
   - curl -L http://nginx.org/download/nginx-1.8.0.tar.gz | tar xzf -
   - (cd nginx-1.8.0 && ./configure --prefix=$HOME/nginx && make && make install)
