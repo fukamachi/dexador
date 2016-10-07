@@ -28,19 +28,27 @@
      :utf-8)
     ((string-equal charset "euc-jp")
      :eucjp)
-    ((string-equal charset "shift_jis")
+    ((or (string-equal charset "shift_jis")
+         (string-equal charset "shift-jis"))
+     :cp932)
+    ((string-equal charset "windows-31j")
      :cp932)
     (t (or (find charset (babel:list-character-encodings)
                  :test #'string-equal)
            default))))
 
-(defun detect-charset (content-type)
+(defun detect-charset (content-type body)
   (multiple-value-bind (type subtype charset)
       (parse-content-type content-type)
     (cond
       ((charset-to-encoding charset nil))
       ((string-equal type "text")
-       (charset-to-encoding charset))
+       (or (charset-to-encoding charset nil)
+           (if (and (string-equal subtype "html")
+                    (typep body '(array (unsigned-byte 8) (*))))
+               (charset-to-encoding (detect-charset-from-html body) nil)
+               nil)
+           :utf-8))
       ((and (string-equal type "application")
             (string-equal subtype "json"))
        ;; According to RFC4627 (http://www.ietf.org/rfc/rfc4627.txt),
@@ -51,3 +59,23 @@
       ((and (string-equal type "application")
             (ppcre:scan "(?:[^+]+\\+)?xml" subtype))
        (charset-to-encoding charset)))))
+
+(defun detect-charset-from-html (body)
+  "Detect the body's charset by (roughly) searching meta tags which has \"charset\" attribute."
+  (labels ((find-meta (start)
+             (search #.(babel:string-to-octets "<meta ") body :start2 start))
+           (main (start)
+             (let ((start (find-meta start)))
+               (unless start
+                 (return-from main nil))
+               (let ((end (position (char-code #\>) body :start start :test #'=)))
+                 (unless end
+                   (return-from main nil))
+                 (incf end)
+                 (let ((match (nth-value 1 (ppcre:scan-to-strings
+                                            "charset=[\"']?([^\\s\"'>]+)[\"']?"
+                                            (babel:octets-to-string body :start start :end end :errorp nil)))))
+                   (if match
+                       (aref match 0)
+                       (main end)))))))
+    (main 0)))

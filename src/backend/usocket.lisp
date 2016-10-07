@@ -227,7 +227,8 @@
 
 (defun decode-body (content-type body)
   (let ((charset (and content-type
-                      (detect-charset content-type))))
+                      (detect-charset content-type body)))
+        (babel-encodings:*suppress-character-coding-errors* t))
     (if charset
         (handler-case
             (if (streamp body)
