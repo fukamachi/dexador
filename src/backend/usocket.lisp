@@ -353,6 +353,14 @@
          buffer)
         (fast-write-sequence +crlf+ buffer)))))
 
+(defun make-connect-stream (uri version stream)
+  (let ((header (with-fast-output (buffer)
+                  (write-connect-header uri version buffer))))
+    (write-sequence header stream)
+    (force-output stream)
+    (read-until-crlf*2 stream)
+    stream))
+
 (defun-careful request (uri &rest args
                             &key (method :get) (version 1.1)
                             content headers
@@ -363,25 +371,33 @@
                             ssl-key-file ssl-cert-file ssl-key-password
                             stream verbose
                             force-binary
-                            want-stream)
+                            want-stream
+                            proxy)
   (declare (ignorable ssl-key-file ssl-cert-file ssl-key-password
                       timeout)
            (type single-float version)
            (type fixnum max-redirects))
   (labels ((make-new-connection (uri)
-             (let ((stream
-                     (usocket:socket-stream
-                      (usocket:socket-connect (uri-host uri)
-                                              (uri-port uri)
-                                              #-(or ecl clisp) :timeout #-(or ecl clisp) timeout
-                                              :element-type '(unsigned-byte 8))))
-                   (scheme (uri-scheme uri)))
+             (let* ((con-uri (if proxy
+                               (if (quri:uri-p proxy)
+                                 proxy
+                                 (quri:uri proxy))
+                               uri))
+                    (stream
+                      (usocket:socket-stream
+                       (usocket:socket-connect (uri-host con-uri)
+                                               (uri-port con-uri)
+                                               #-(or ecl clisp) :timeout #-(or ecl clisp) timeout
+                                               :element-type '(unsigned-byte 8))))
+                    (scheme (uri-scheme uri)))
                (declare (type string scheme))
                (if (string= scheme "https")
                    #+dexador-no-ssl
                    (error "SSL not supported. Remove :dexador-no-ssl from *features* to enable SSL.")
                    #-dexador-no-ssl
-                   (cl+ssl:make-ssl-client-stream stream
+                   (cl+ssl:make-ssl-client-stream (if proxy
+                                                    (make-connect-stream uri version stream)
+                                                    stream)
                                                   :hostname (uri-host uri)
                                                   :certificate ssl-cert-file
                                                   :key ssl-key-file
@@ -429,7 +445,7 @@
                               (null (cdr content-length)))))
            (first-line-data
              (with-fast-output (buffer)
-               (write-first-line method uri version buffer)))
+               (write-first-line method uri proxy version buffer)))
            (headers-data
              (flet ((write-header* (name value)
                       (let ((header (assoc name headers :test #'string-equal)))
@@ -597,7 +613,7 @@
                          (setq uri (merge-uris location-uri uri))
                          (setq first-line-data
                                (with-fast-output (buffer)
-                                 (write-first-line method uri version buffer)))
+                                 (write-first-line method uri proxy version buffer)))
                          (when cookie-jar
                            ;; Rebuild cookie-headers.
                            (setq cookie-headers (build-cookie-headers uri cookie-jar)))

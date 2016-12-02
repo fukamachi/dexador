@@ -7,7 +7,10 @@
                 :fast-write-sequence)
   (:import-from :quri
                 :uri-path
-                :uri-query)
+                :uri-query
+                :uri-host
+                :uri-port
+                :render-uri)
   (:export :*default-timeout*
            :defun-speedy
            :defun-careful
@@ -18,6 +21,7 @@
            :write-first-line
            :write-header
            :with-header-output
+           :write-connect-header
            :make-random-string))
 (in-package :dexador.util)
 
@@ -80,12 +84,15 @@
 
 (defparameter *header-buffer* nil)
 
-(defun write-first-line (method uri version &optional (buffer *header-buffer*))
+(defun write-first-line (method uri proxy version &optional (buffer *header-buffer*))
   (fast-write-sequence (ascii-string-to-octets (string method)) buffer)
   (fast-write-byte #.(char-code #\Space) buffer)
-  (fast-write-sequence (ascii-string-to-octets (format nil "~A~:[~;~:*?~A~]"
-                                                       (or (uri-path uri) "/")
-                                                       (uri-query uri)))
+  (fast-write-sequence (ascii-string-to-octets
+                         (if proxy
+                           (render-uri uri)
+                           (format nil "~A~:[~;~:*?~A~]"
+                                   (or (uri-path uri) "/")
+                                   (uri-query uri))))
                        buffer)
   (fast-write-byte #.(char-code #\Space) buffer)
   (fast-write-sequence (ecase version
@@ -129,6 +136,28 @@
      (declare (ignorable ,buffer))
      (let ((*header-buffer* ,buffer))
        ,@body)))
+
+(defun write-connect-header (uri version buffer)
+  (fast-write-sequence (ascii-string-to-octets "CONNECT") buffer)
+  (fast-write-byte #.(char-code #\Space) buffer)
+  (fast-write-sequence (ascii-string-to-octets (format nil "~A:~A"
+                                                       (uri-host uri)
+                                                       (uri-port uri)))
+                       buffer)
+  (fast-write-byte #.(char-code #\Space) buffer)
+  (fast-write-sequence (ecase version
+                         (1.1 (ascii-string-to-octets "HTTP/1.1"))
+                         (1.0 (ascii-string-to-octets "HTTP/1.0")))
+                       buffer)
+  (fast-write-sequence +crlf+ buffer)
+  (fast-write-sequence (ascii-string-to-octets "Host:") buffer)
+  (fast-write-byte #.(char-code #\Space) buffer)
+  (fast-write-sequence (ascii-string-to-octets (format nil "~A:~A"
+                                                       (uri-host uri)
+                                                       (uri-port uri)))
+                       buffer)
+  (fast-write-sequence +crlf+ buffer)
+  (fast-write-sequence +crlf+ buffer))
 
 (defun-speedy make-random-string (&optional (length 12))
   (declare (type fixnum length))

@@ -40,45 +40,45 @@
 (defun get (uri &rest args
             &key version headers basic-auth cookie-jar keep-alive use-connection-pool timeout max-redirects
               force-binary want-stream
-              ssl-key-file ssl-cert-file ssl-key-password stream verbose)
-  (declare (ignore version headers basic-auth cookie-jar keep-alive use-connection-pool timeout max-redirects force-binary want-stream ssl-key-file ssl-cert-file ssl-key-password stream verbose))
+              ssl-key-file ssl-cert-file ssl-key-password stream verbose proxy)
+  (declare (ignore version headers basic-auth cookie-jar keep-alive use-connection-pool timeout max-redirects force-binary want-stream ssl-key-file ssl-cert-file ssl-key-password stream verbose proxy))
   (apply #'request uri :method :get args))
 
 (defun post (uri &rest args
              &key version content headers basic-auth cookie-jar keep-alive use-connection-pool timeout
                force-binary want-stream
-               ssl-key-file ssl-cert-file ssl-key-password stream verbose)
-  (declare (ignore version content headers basic-auth cookie-jar keep-alive use-connection-pool timeout force-binary want-stream ssl-key-file ssl-cert-file ssl-key-password stream verbose))
+               ssl-key-file ssl-cert-file ssl-key-password stream verbose proxy)
+  (declare (ignore version content headers basic-auth cookie-jar keep-alive use-connection-pool timeout force-binary want-stream ssl-key-file ssl-cert-file ssl-key-password stream verbose proxy))
   (apply #'request uri :method :post args))
 
 (defun head (uri &rest args
              &key version headers basic-auth cookie-jar timeout max-redirects
-               ssl-key-file ssl-cert-file ssl-key-password stream verbose)
-  (declare (ignore version headers basic-auth cookie-jar timeout max-redirects ssl-key-file ssl-cert-file ssl-key-password stream verbose))
+               ssl-key-file ssl-cert-file ssl-key-password stream verbose proxy)
+  (declare (ignore version headers basic-auth cookie-jar timeout max-redirects ssl-key-file ssl-cert-file ssl-key-password stream verbose proxy))
   (apply #'request uri :method :head :use-connection-pool nil args))
 
 (defun put (uri &rest args
             &key version content headers basic-auth cookie-jar keep-alive use-connection-pool timeout
               force-binary want-stream
-              ssl-key-file ssl-cert-file ssl-key-password stream verbose)
-  (declare (ignore version content headers basic-auth cookie-jar keep-alive use-connection-pool timeout force-binary want-stream ssl-key-file ssl-cert-file ssl-key-password stream verbose))
+              ssl-key-file ssl-cert-file ssl-key-password stream verbose proxy)
+  (declare (ignore version content headers basic-auth cookie-jar keep-alive use-connection-pool timeout force-binary want-stream ssl-key-file ssl-cert-file ssl-key-password stream verbose proxy))
   (apply #'request uri :method :put args))
 
 (defun delete (uri &rest args
                &key version headers basic-auth cookie-jar keep-alive use-connection-pool timeout
                  force-binary want-stream
-                 ssl-key-file ssl-cert-file ssl-key-password stream verbose)
-  (declare (ignore version headers basic-auth cookie-jar keep-alive use-connection-pool timeout force-binary want-stream ssl-key-file ssl-cert-file ssl-key-password stream verbose))
+                 ssl-key-file ssl-cert-file ssl-key-password stream verbose proxy)
+  (declare (ignore version headers basic-auth cookie-jar keep-alive use-connection-pool timeout force-binary want-stream ssl-key-file ssl-cert-file ssl-key-password stream verbose proxy))
   (apply #'request uri :method :delete args))
 
-(defun fetch (uri destination &key (if-exists :error) verbose)
+(defun fetch (uri destination &key (if-exists :error) verbose proxy)
   (unless (and (eql if-exists nil)
                (probe-file destination))
     (with-open-file (out destination
                          :direction :output :element-type '(unsigned-byte 8)
                          :if-exists if-exists
                          :if-does-not-exist :create)
-      (let ((body (dex:get uri :want-stream t :force-binary t :verbose verbose)))
+      (let ((body (dex:get uri :want-stream t :force-binary t :verbose verbose :proxy proxy)))
         (alexandria:copy-stream body out)))))
 
 (defun ignore-and-continue (e)
