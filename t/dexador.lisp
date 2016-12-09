@@ -155,12 +155,15 @@
                      (loop for (k . v) in (lack.request:request-body-parameters req)
                            do (format s "~&~A: ~A~%"
                                       k
-                                      (if (and (consp v)
-                                               (streamp (car v)))
-                                          (let* ((buf (make-array 1024 :element-type '(unsigned-byte 8)))
-                                                 (n (read-sequence buf (car v))))
-                                            (babel:octets-to-string (subseq buf 0 n)))
-                                          v))))))))))
+                                      (cond
+                                        ((and (consp v)
+                                              (streamp (car v)))
+                                         (let* ((buf (make-array 1024 :element-type '(unsigned-byte 8)))
+                                                (n (read-sequence buf (car v))))
+                                           (babel:octets-to-string (subseq buf 0 n))))
+                                        ((consp v)
+                                         (car v))
+                                        (t v)))))))))))
   (subtest "content in alist"
     (multiple-value-bind (body code headers)
         (dex:post (localhost)
