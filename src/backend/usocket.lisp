@@ -378,11 +378,7 @@
            (type single-float version)
            (type fixnum max-redirects))
   (labels ((make-new-connection (uri)
-             (let* ((con-uri (if proxy
-                               (if (quri:uri-p proxy)
-                                 proxy
-                                 (quri:uri proxy))
-                               uri))
+             (let* ((con-uri (quri:uri (or proxy uri)))
                     (stream
                       (usocket:socket-stream
                        (usocket:socket-connect (uri-host con-uri)
@@ -396,8 +392,8 @@
                    (error "SSL not supported. Remove :dexador-no-ssl from *features* to enable SSL.")
                    #-dexador-no-ssl
                    (cl+ssl:make-ssl-client-stream (if proxy
-                                                    (make-connect-stream uri version stream)
-                                                    stream)
+                                                      (make-connect-stream uri version stream)
+                                                      stream)
                                                   :hostname (uri-host uri)
                                                   :certificate ssl-cert-file
                                                   :key ssl-key-file
@@ -415,9 +411,7 @@
                                           (uri-scheme uri)
                                           (uri-authority uri)) stream)
                  (ignore-errors (close stream)))))
-    (let* ((uri (if (quri:uri-p uri)
-                    uri
-                    (quri:uri uri)))
+    (let* ((uri (quri:uri uri))
            (multipart-p (and (consp content)
                              (find-if #'pathnamep content :key #'cdr)))
            (form-urlencoded-p (and (consp content)
@@ -538,8 +532,8 @@
            ;; Sending the content
            (when content
              (let ((stream (if chunkedp
-                                (chunga:make-chunked-stream stream)
-                                stream)))
+                               (chunga:make-chunked-stream stream)
+                               stream)))
                (when chunkedp
                  (setf (chunga:chunked-stream-output-chunking-p stream) t))
                (etypecase content
@@ -558,7 +552,7 @@
          start-reading
            (multiple-value-bind (http body response-headers-data transfer-encoding-p)
                (with-retrying
-                 (read-response stream (not (eq method :head)) verbose (not want-stream)))
+                   (read-response stream (not (eq method :head)) verbose (not want-stream)))
              (let ((status (http-status http))
                    (response-headers (http-headers http)))
                (when (= status 0)
