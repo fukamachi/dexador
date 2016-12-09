@@ -8,7 +8,7 @@
                 :localhost))
 (in-package :dexador-test)
 
-(plan 15)
+(plan 16)
 
 (defun random-port ()
   "Return a port number not in use from 50000 to 60000."
@@ -48,6 +48,37 @@
         (dex:delete (localhost "/foo"))
       (is code 200)
       (is body "/foo"))))
+
+(subtest-app "proxy (http) case"
+    ; proxy behavior is same as direct connection if http
+    (lambda (env)
+      `(200 (:content-length ,(length (getf env :request-uri))) (,(getf env :request-uri))))
+  (subtest "GET"
+    (multiple-value-bind (body code headers)
+        (dex:get (localhost "/foo")
+                 :headers '((:x-foo . "ppp"))
+                 :proxy (localhost))
+      (is code 200)
+      (is body (localhost "/foo"))
+      (is (gethash "content-length" headers) (length (localhost "/foo")))))
+  (subtest "HEAD"
+    (multiple-value-bind (body code)
+        (dex:head (localhost "/foo")
+                  :proxy (localhost))
+      (is code 200)
+      (is body "")))
+  (subtest "PUT"
+    (multiple-value-bind (body code)
+        (dex:put (localhost "/foo")
+                 :proxy (localhost))
+      (is code 200)
+      (is body (localhost "/foo"))))
+  (subtest "DELETE"
+    (multiple-value-bind (body code)
+        (dex:delete (localhost "/foo")
+                    :proxy (localhost))
+      (is code 200)
+      (is body (localhost "/foo")))))
 
 (subtest-app "redirection"
     (lambda (env)

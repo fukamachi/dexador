@@ -189,6 +189,14 @@ Dexador singals a condition `http-request-failed` when the server returned 4xx o
   (dex:get "http://lisp.org"))
 ```
 
+### Proxy
+
+You can connect via proxy.
+
+```common-lisp
+(dex:get "http://lisp.org/" :proxy "http://proxy.yourcompany.com:8080/")
+```
+
 ## Functions
 
 All functions take similar arguments.
@@ -224,6 +232,8 @@ All functions take similar arguments.
   - The stream to write an HTTP request. This is the way to reuse a connection and commonly used with `:keep-alive T`.
 - `verbose` (boolean)
   - This option is for debugging. If this is `T`, it dumps the HTTP request headers.
+- `proxy` (string)
+  - for use proxy.
 
 ### \[Function\] request
 
@@ -231,7 +241,7 @@ All functions take similar arguments.
 (dex:request uri &key method version content headers basic-auth cookie-jar timeout
                    (keep-alive t) (use-connection-pool t) (max-redirects 5)
                    ssl-key-file ssl-cert-file ssl-key-password
-                   stream verbose force-binary want-stream)
+                   stream verbose force-binary want-stream proxy)
 ;=> body
 ;   status
 ;   response-headers
@@ -258,7 +268,7 @@ This function signals `http-request-failed` when the HTTP status code is 4xx or 
 ```common-lisp
 (dex:get uri &key version headers basic-auth cookie-jar keep-alive timeout max-redirects force-binary want-stream
                ssl-key-file ssl-cert-file ssl-key-password
-               stream verbose)
+               stream verbose proxy)
 ```
 
 ### \[Function\] post
@@ -266,7 +276,7 @@ This function signals `http-request-failed` when the HTTP status code is 4xx or 
 ```common-lisp
 (dex:post uri &key version headers content cookie-jar keep-alive timeout force-binary want-stream
                 ssl-key-file ssl-cert-file ssl-key-password
-                stream verbose)
+                stream verbose proxy)
 ```
 
 ### \[Function\] head
@@ -274,7 +284,7 @@ This function signals `http-request-failed` when the HTTP status code is 4xx or 
 ```common-lisp
 (dex:head uri &key version headers cookie-jar timeout max-redirects
                 ssl-key-file ssl-cert-file ssl-key-password
-                stream verbose)
+                stream verbose proxy)
 ```
 
 ### \[Function\] put
@@ -282,7 +292,7 @@ This function signals `http-request-failed` when the HTTP status code is 4xx or 
 ```common-lisp
 (dex:put uri &key version headers content cookie-jar keep-alive timeout force-binary want-stream
                ssl-key-file ssl-cert-file ssl-key-password
-               stream verbose)
+               stream verbose proxy)
 ```
 
 ### \[Function\] delete
@@ -290,7 +300,7 @@ This function signals `http-request-failed` when the HTTP status code is 4xx or 
 ```common-lisp
 (dex:delete uri &key version headers cookie-jar keep-alive timeout force-binary want-stream
                   ssl-key-file ssl-cert-file ssl-key-password
-                  stream verbose)
+                  stream verbose proxy)
 ```
 
 ### \[Function\] fetch
@@ -298,7 +308,7 @@ This function signals `http-request-failed` when the HTTP status code is 4xx or 
 Send a GET request to `URI` and write the response body to the `DESTINATION`.
 
 ```common-lisp
-(dex:fetch uri destination &key if-exists verbose)
+(dex:fetch uri destination &key if-exists verbose proxy)
 ```
 
 ## Benchmark
