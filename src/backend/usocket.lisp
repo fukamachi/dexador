@@ -57,7 +57,9 @@
                 :string-to-base64-string)
   #-dexador-no-ssl
   (:import-from :cl+ssl
-                :make-ssl-client-stream)
+                :make-ssl-client-stream
+                :ensure-initialized
+                :ssl-check-verify-p)
   (:import-from :alexandria
                 :copy-stream
                 :if-let
@@ -372,7 +374,8 @@
                             stream verbose
                             force-binary
                             want-stream
-                            proxy)
+                            proxy
+                            insecure)
   (declare (ignorable ssl-key-file ssl-cert-file ssl-key-password
                       timeout)
            (type single-float version)
@@ -391,13 +394,16 @@
                    #+dexador-no-ssl
                    (error "SSL not supported. Remove :dexador-no-ssl from *features* to enable SSL.")
                    #-dexador-no-ssl
-                   (cl+ssl:make-ssl-client-stream (if proxy
-                                                      (make-connect-stream uri version stream)
-                                                      stream)
-                                                  :hostname (uri-host uri)
-                                                  :certificate ssl-cert-file
-                                                  :key ssl-key-file
-                                                  :password ssl-key-password)
+                   (progn
+                     (cl+ssl:ensure-initialized)
+                     (setf (cl+ssl:ssl-check-verify-p) (not insecure))
+                     (cl+ssl:make-ssl-client-stream (if proxy
+                                                        (make-connect-stream uri version stream)
+                                                        stream)
+                                                    :hostname (uri-host uri)
+                                                    :certificate ssl-cert-file
+                                                    :key ssl-key-file
+                                                    :password ssl-key-password))
                    stream)))
            (connection-keep-alive-p (connection-header)
              (and keep-alive
