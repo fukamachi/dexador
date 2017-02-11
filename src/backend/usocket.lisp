@@ -57,6 +57,8 @@
                 :string-to-base64-string)
   #-dexador-no-ssl
   (:import-from :cl+ssl
+                :with-global-context
+                :make-context
                 :make-ssl-client-stream
                 :ensure-initialized
                 :ssl-check-verify-p)
@@ -375,9 +377,11 @@
                             force-binary
                             want-stream
                             proxy
-                            insecure)
+                            insecure
+                            ca-file
+                            ca-directory)
   (declare (ignorable ssl-key-file ssl-cert-file ssl-key-password
-                      timeout)
+                      timeout ca-file ca-directory)
            (type single-float version)
            (type fixnum max-redirects))
   (labels ((make-new-connection (uri)
@@ -397,13 +401,21 @@
                    (progn
                      (cl+ssl:ensure-initialized)
                      (setf (cl+ssl:ssl-check-verify-p) (not insecure))
-                     (cl+ssl:make-ssl-client-stream (if proxy
-                                                        (make-connect-stream uri version stream)
-                                                        stream)
-                                                    :hostname (uri-host uri)
-                                                    :certificate ssl-cert-file
-                                                    :key ssl-key-file
-                                                    :password ssl-key-password))
+                     (let ((ctx (cl+ssl:make-context :verify-mode (if insecure
+                                                                      cl+ssl:+ssl-verify-none+
+                                                                      cl+ssl:+ssl-verify-peer+)
+                                                     :verify-location (or (and ca-file ca-directory
+                                                                               (list ca-file ca-directory))
+                                                                          ca-file ca-directory
+                                                                          :default))))
+                       (cl+ssl:with-global-context (ctx :auto-free-p t)
+                         (cl+ssl:make-ssl-client-stream (if proxy
+                                                            (make-connect-stream uri version stream)
+                                                            stream)
+                                                        :hostname (uri-host uri)
+                                                        :certificate ssl-cert-file
+                                                        :key ssl-key-file
+                                                        :password ssl-key-password))))
                    stream)))
            (connection-keep-alive-p (connection-header)
              (and keep-alive
