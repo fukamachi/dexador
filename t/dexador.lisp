@@ -20,7 +20,6 @@
   `(let ((*clack-test-port* (random-port)))
      (clack.test:subtest-app ,desc ,app
        (dex:clear-connection-pool)
-       (sleep 1)
        ,@body)))
 
 (subtest-app "normal case"
