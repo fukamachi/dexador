@@ -74,6 +74,10 @@
            :ignore-and-continue))
 (in-package :dexador.backend.usocket)
 
+(defparameter *ca-bundle*
+  (namestring
+   (asdf:system-relative-pathname :dexador #P"certs/cacert.pem")))
+
 (defun-speedy read-until-crlf*2 (stream)
   (with-fast-output (buf)
     (tagbody
@@ -378,10 +382,9 @@
                             want-stream
                             proxy
                             insecure
-                            ca-file
-                            ca-directory)
+                            ca-path)
   (declare (ignorable ssl-key-file ssl-cert-file ssl-key-password
-                      timeout ca-file ca-directory)
+                      timeout ca-path)
            (type single-float version)
            (type fixnum max-redirects))
   (labels ((make-new-connection (uri)
@@ -401,13 +404,14 @@
                    (progn
                      (cl+ssl:ensure-initialized)
                      (setf (cl+ssl:ssl-check-verify-p) (not insecure))
-                     (let ((ctx (cl+ssl:make-context :verify-mode (if insecure
-                                                                      cl+ssl:+ssl-verify-none+
-                                                                      cl+ssl:+ssl-verify-peer+)
-                                                     :verify-location (or (and ca-file ca-directory
-                                                                               (list ca-file ca-directory))
-                                                                          ca-file ca-directory
-                                                                          :default))))
+                     (let ((ctx (cl+ssl:make-context :verify-mode
+                                                     (if insecure
+                                                         cl+ssl:+ssl-verify-none+
+                                                         cl+ssl:+ssl-verify-peer+)
+                                                     :verify-location
+                                                     (if ca-path
+                                                         (princ-to-string ca-path)
+                                                         *ca-bundle*))))
                        (cl+ssl:with-global-context (ctx :auto-free-p t)
                          (cl+ssl:make-ssl-client-stream (if proxy
                                                             (make-connect-stream uri version stream)
