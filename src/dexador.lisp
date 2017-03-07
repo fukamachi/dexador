@@ -15,7 +15,8 @@
                 :clear-connection-pool)
   (:import-from :dexador.util
                 :*default-timeout*
-                :*verbose*)
+                :*verbose*
+                :*not-verify-ssl*)
   (:import-from :alexandria
                 :copy-stream)
   (:export :request
@@ -27,6 +28,7 @@
            :fetch
            :*default-timeout*
            :*verbose*
+           :*not-verify-ssl*
            :*connection-pool*
            :*use-connection-pool*
            :make-connection-pool

@@ -381,7 +381,7 @@
                             force-binary
                             want-stream
                             proxy
-                            insecure
+                            (insecure *not-verify-ssl*)
                             ca-path)
   (declare (ignorable ssl-key-file ssl-cert-file ssl-key-password
                       timeout ca-path)

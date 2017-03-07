@@ -13,6 +13,7 @@
                 :render-uri)
   (:export :*default-timeout*
            :*verbose*
+           :*not-verify-ssl*
            :defun-speedy
            :defun-careful
            :octets
@@ -28,6 +29,7 @@
 
 (defvar *default-timeout* 10)
 (defvar *verbose* nil)
+(defvar *not-verify-ssl* nil)
 
 (eval-when (:compile-toplevel :load-toplevel :execute)
   (defvar *speedy-declaration* '(declare (optimize (speed 3) (safety 0) (space 0) (compilation-speed 0))))
