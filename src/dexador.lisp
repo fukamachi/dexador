@@ -14,7 +14,8 @@
                 :make-connection-pool
                 :clear-connection-pool)
   (:import-from :dexador.util
-                :*default-timeout*)
+                :*default-timeout*
+                :*verbose*)
   (:import-from :alexandria
                 :copy-stream)
   (:export :request
@@ -25,6 +26,7 @@
            :delete
            :fetch
            :*default-timeout*
+           :*verbose*
            :*connection-pool*
            :*use-connection-pool*
            :make-connection-pool

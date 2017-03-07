@@ -377,7 +377,7 @@
                             (timeout *default-timeout*) (keep-alive t) (use-connection-pool t)
                             (max-redirects 5)
                             ssl-key-file ssl-cert-file ssl-key-password
-                            stream verbose
+                            stream (verbose *verbose*)
                             force-binary
                             want-stream
                             proxy

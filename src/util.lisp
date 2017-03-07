@@ -12,6 +12,7 @@
                 :uri-port
                 :render-uri)
   (:export :*default-timeout*
+           :*verbose*
            :defun-speedy
            :defun-careful
            :octets
@@ -26,6 +27,7 @@
 (in-package :dexador.util)
 
 (defvar *default-timeout* 10)
+(defvar *verbose* nil)
 
 (eval-when (:compile-toplevel :load-toplevel :execute)
   (defvar *speedy-declaration* '(declare (optimize (speed 3) (safety 0) (space 0) (compilation-speed 0))))
