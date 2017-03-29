@@ -7,31 +7,26 @@
   Author: Eitaro Fukamachi (e.arrows@gmail.com)
 |#
 
-(in-package :cl-user)
-(defpackage dexador-asd
-  (:use :cl :asdf))
-(in-package :dexador-asd)
-
-(defsystem dexador
+(defsystem "dexador"
   :version "0.9.10"
   :author "Eitaro Fukamachi"
   :license "MIT"
-  :depends-on (:usocket
-               :fast-http
-               :quri
-               :fast-io
-               :babel
-               :trivial-gray-streams
-               :chunga
-               :cl-ppcre
-               :cl-cookie
-               :trivial-mimes
-               :chipz
-               :cl-base64
-               :cl-reexport
-               #-dexador-no-ssl :cl+ssl
-               :bordeaux-threads
-               :alexandria)
+  :depends-on ("usocket"
+               "fast-http"
+               "quri"
+               "fast-io"
+               "babel"
+               "trivial-gray-streams"
+               "chunga"
+               "cl-ppcre"
+               "cl-cookie"
+               "trivial-mimes"
+               "chipz"
+               "cl-base64"
+               "cl-reexport"
+               (:feature (:not :dexador-no-ssl) "cl+ssl")
+               "bordeaux-threads"
+               "alexandria")
   :components ((:module "src"
                 :components
                 ((:file "dexador" :depends-on ("backend" "error"))
@@ -46,16 +41,5 @@
                   :components
                   ((:file "usocket"))))))
   :description "Yet another HTTP client for Common Lisp"
-  :long-description
-  #.(with-open-file (stream (merge-pathnames
-                             #p"README.markdown"
-                             (or *load-pathname* *compile-file-pathname*))
-                            :if-does-not-exist nil
-                            :direction :input)
-      (when stream
-        (let ((seq (make-array (file-length stream)
-                               :element-type 'character
-                               :fill-pointer t)))
-          (setf (fill-pointer seq) (read-sequence seq stream))
-          seq)))
-  :in-order-to ((test-op (test-op dexador-test))))
+  :long-description #.(read-file-string (subpathname *load-pathname* "README.markdown"))
+  :in-order-to ((test-op (test-op "dexador-test"))))
