@@ -67,6 +67,7 @@
                 :if-let
                 :when-let
                 :ensure-list)
+  (:import-from :uiop)
   (:export :request
 
            ;; Restarts
@@ -75,7 +76,7 @@
 (in-package :dexador.backend.usocket)
 
 (defparameter *ca-bundle*
-  (namestring
+  (uiop:native-namestring
    (asdf:system-relative-pathname :dexador #P"certs/cacert.pem")))
 
 (defun-speedy read-until-crlf*2 (stream)
@@ -409,9 +410,11 @@
                                                          cl+ssl:+ssl-verify-none+
                                                          cl+ssl:+ssl-verify-peer+)
                                                      :verify-location
-                                                     (if ca-path
-                                                         (princ-to-string ca-path)
-                                                         *ca-bundle*))))
+                                                     (cond
+                                                       (ca-path (uiop:native-namestring ca-path))
+                                                       ((probe-file *ca-bundle*) *ca-bundle*)
+                                                       ;; In executable environment, perhaps *ca-bundle* doesn't exist.
+                                                       (t :default)))))
                        (cl+ssl:with-global-context (ctx :auto-free-p t)
                          (cl+ssl:make-ssl-client-stream (if proxy
                                                             (make-connect-stream uri version stream)
