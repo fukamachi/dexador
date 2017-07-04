@@ -651,26 +651,27 @@
                                (1- max-redirects))
                          (return-from request
                            (apply #'request location-uri args))))))
-               (finalize-connection stream (gethash "connection" response-headers) uri)
-               (let ((body (convert-body body
-                                         (gethash "content-encoding" response-headers)
-                                         (gethash "content-type" response-headers)
-                                         (gethash "content-length" response-headers)
-                                         transfer-encoding-p
-                                         force-binary
-                                         (connection-keep-alive-p
-                                          (gethash "connection" response-headers)))))
-                 ;; Raise an error when the HTTP response status code is 4xx or 50x.
-                 (when (<= 400 status)
-                   (http-request-failed-with-restarts status
-                                                      :body body
-                                                      :headers response-headers
-                                                      :uri uri))
-                 (return-from request
-                   (values body
-                           status
-                           response-headers
-                           uri
-                           (when (and keep-alive
-                                      (not (equalp (gethash "connection" response-headers) "close")))
-                             stream)))))))))))
+               (unwind-protect
+                    (let ((body (convert-body body
+                                              (gethash "content-encoding" response-headers)
+                                              (gethash "content-type" response-headers)
+                                              (gethash "content-length" response-headers)
+                                              transfer-encoding-p
+                                              force-binary
+                                              (connection-keep-alive-p
+                                               (gethash "connection" response-headers)))))
+                      ;; Raise an error when the HTTP response status code is 4xx or 50x.
+                      (when (<= 400 status)
+                        (http-request-failed-with-restarts status
+                                                           :body body
+                                                           :headers response-headers
+                                                           :uri uri))
+                      (return-from request
+                        (values body
+                                status
+                                response-headers
+                                uri
+                                (when (and keep-alive
+                                           (not (equalp (gethash "connection" response-headers) "close")))
+                                  stream))))
+                 (finalize-connection stream (gethash "connection" response-headers) uri)))))))))
