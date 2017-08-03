@@ -295,6 +295,14 @@ This function signals `http-request-failed` when the HTTP status code is 4xx or 
                stream verbose proxy)
 ```
 
+### \[Function\] patch
+
+```common-lisp
+(dex:patch uri &key version headers content cookie-jar keep-alive timeout force-binary want-stream
+                 ssl-key-file ssl-cert-file ssl-key-password
+                 stream verbose proxy)
+```
+
 ### \[Function\] delete
 
 ```common-lisp

@@ -24,6 +24,7 @@
            :post
            :head
            :put
+           :patch
            :delete
            :fetch
            :*default-timeout*
@@ -67,6 +68,13 @@
               ssl-key-file ssl-cert-file ssl-key-password stream verbose proxy insecure ca-path)
   (declare (ignore version content headers basic-auth cookie-jar keep-alive use-connection-pool timeout force-binary want-stream ssl-key-file ssl-cert-file ssl-key-password stream verbose proxy insecure ca-path))
   (apply #'request uri :method :put args))
+
+(defun patch (uri &rest args
+              &key version content headers basic-auth cookie-jar keep-alive use-connection-pool timeout
+                force-binary want-stream
+                ssl-key-file ssl-cert-file ssl-key-password stream verbose proxy insecure ca-path)
+  (declare (ignore version content headers basic-auth cookie-jar keep-alive use-connection-pool timeout force-binary want-stream ssl-key-file ssl-cert-file ssl-key-password stream verbose proxy insecure ca-path))
+  (apply #'request uri :method :patch args))
 
 (defun delete (uri &rest args
                &key version headers basic-auth cookie-jar keep-alive use-connection-pool timeout
