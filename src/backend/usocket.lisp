@@ -339,12 +339,13 @@
             finally
                (boundary-line t)))))
 
-(defmacro http-request-failed-with-restarts (status &key body headers uri)
+(defmacro http-request-failed-with-restarts (status &key body headers uri method)
   `(restart-case
        (http-request-failed ,status
                             :body ,body
                             :headers ,headers
-                            :uri ,uri)
+                            :uri ,uri
+                            :method ,method)
      (retry-request ()
        :report "Retry the same request."
        (go retry))
@@ -586,7 +587,8 @@
                    (http-request-failed-with-restarts status
                                                       :body body
                                                       :headers headers
-                                                      :uri uri))
+                                                      :uri uri
+                                                      :method method))
                  (setf use-connection-pool nil
                        reusing-stream-p nil
                        stream (make-new-connection uri))
@@ -665,7 +667,8 @@
                         (http-request-failed-with-restarts status
                                                            :body body
                                                            :headers response-headers
-                                                           :uri uri))
+                                                           :uri uri
+                                                           :method method))
                       (return-from request
                         (values body
                                 status

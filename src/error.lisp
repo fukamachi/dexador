@@ -39,7 +39,8 @@
            :response-body
            :response-status
            :response-headers
-           :request-uri))
+           :request-uri
+           :request-method))
 (in-package :dexador.error)
 
 (define-condition http-request-failed (error)
@@ -50,7 +51,9 @@
    (headers :initarg :headers
             :reader response-headers)
    (uri :initarg :uri
-        :reader request-uri))
+        :reader request-uri)
+   (method :initarg :method
+           :reader request-method))
   (:report (lambda (condition stream)
              (with-slots (uri status) condition
                (format stream "An HTTP request to ~S has failed (status=~D)."
@@ -105,9 +108,10 @@
              collect `(setf (gethash ,code *request-failed-error*)
                             ',(intern (format nil "~A-~A" :http-request name)))))
 
-(defun http-request-failed (status &key body headers uri)
+(defun http-request-failed (status &key body headers uri method)
   (error (gethash status *request-failed-error* 'http-request-failed)
          :body body
          :status status
          :headers headers
-         :uri uri))
+         :uri uri
+         :method method))
