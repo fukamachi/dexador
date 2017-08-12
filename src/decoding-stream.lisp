@@ -100,12 +100,15 @@ Similar to flexi-input-stream, except this uses Babel for decoding."))
 
   (with-slots (buffer buffer-position encoding last-char last-char-size)
       stream
+    (declare (fixnum buffer-position))
     (let* ((mapping (lookup-mapping *string-vector-mappings* encoding))
            (counter (code-point-counter mapping)))
       (declare (type function counter))
-      (multiple-value-bind (size new-end)
+      (multiple-value-bind (chars new-end)
           (funcall counter buffer buffer-position +buffer-size+ 1)
-        (let ((string (make-string 1 :element-type 'babel:unicode-char)))
+        (declare (ignore chars) (fixnum new-end))
+        (let ((string (make-string 1 :element-type 'babel:unicode-char))
+              (size (the fixnum (- new-end buffer-position))))
           (funcall (the function (babel-encodings:decoder mapping))
                    buffer buffer-position new-end string 0)
           (setf buffer-position new-end
