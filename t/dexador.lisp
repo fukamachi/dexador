@@ -8,7 +8,7 @@
                 :localhost))
 (in-package :dexador-test)
 
-(plan 16)
+(plan 17)
 
 (defun random-port ()
   "Return a port number not in use from 50000 to 60000."
@@ -372,5 +372,16 @@ body: \"Within a couple weeks of learning Lisp I found programming in any other 
             ,(asdf:system-relative-pathname :dexador #p"t/data/test.gz")))
   (let ((body (dex:get (localhost))))
     (is body "Gzip test string." :test #'string=)))
+
+(subtest
+ "unread character"
+  (is #\u2602
+      (with-open-file (stream (asdf:system-relative-pathname
+                               :dexador #p"t/data/umb.bin")
+                              :element-type '(unsigned-byte 8))
+        (let ((decoding-stream
+               (dexador.decoding-stream:make-decoding-stream stream)))
+          (peek-char nil decoding-stream)
+          (read-char decoding-stream)))))
 
 (finalize)
