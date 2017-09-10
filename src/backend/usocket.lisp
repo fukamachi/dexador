@@ -339,13 +339,8 @@
             finally
                (boundary-line t)))))
 
-(defmacro http-request-failed-with-restarts (status &key body headers uri method)
-  `(restart-case
-       (http-request-failed ,status
-                            :body ,body
-                            :headers ,headers
-                            :uri ,uri
-                            :method ,method)
+(defmacro with-restarts (&body body)
+  `(restart-case (progn ,@body)
      (retry-request ()
        :report "Retry the same request."
        (go retry))
@@ -390,41 +385,45 @@
            (type single-float version)
            (type fixnum max-redirects))
   (labels ((make-new-connection (uri)
-             (let* ((con-uri (quri:uri (or proxy uri)))
-                    (stream
-                      (usocket:socket-stream
-                       (usocket:socket-connect (uri-host con-uri)
-                                               (uri-port con-uri)
-                                               #-(or ecl clisp) :timeout #-(or ecl clisp) timeout
-                                               :element-type '(unsigned-byte 8))))
-                    (scheme (uri-scheme uri)))
-               (declare (type string scheme))
-               (if (string= scheme "https")
-                   #+dexador-no-ssl
-                   (error "SSL not supported. Remove :dexador-no-ssl from *features* to enable SSL.")
-                   #-dexador-no-ssl
-                   (progn
-                     (cl+ssl:ensure-initialized)
-                     (setf (cl+ssl:ssl-check-verify-p) (not insecure))
-                     (let ((ctx (cl+ssl:make-context :verify-mode
-                                                     (if insecure
-                                                         cl+ssl:+ssl-verify-none+
-                                                         cl+ssl:+ssl-verify-peer+)
-                                                     :verify-location
-                                                     (cond
-                                                       (ca-path (uiop:native-namestring ca-path))
-                                                       ((probe-file *ca-bundle*) *ca-bundle*)
-                                                       ;; In executable environment, perhaps *ca-bundle* doesn't exist.
-                                                       (t :default)))))
-                       (cl+ssl:with-global-context (ctx :auto-free-p t)
-                         (cl+ssl:make-ssl-client-stream (if proxy
-                                                            (make-connect-stream uri version stream)
-                                                            stream)
-                                                        :hostname (uri-host uri)
-                                                        :certificate ssl-cert-file
-                                                        :key ssl-key-file
-                                                        :password ssl-key-password))))
-                   stream)))
+             (restart-case
+                 (let* ((con-uri (quri:uri (or proxy uri)))
+                        (stream
+                          (usocket:socket-stream
+                           (usocket:socket-connect (uri-host con-uri)
+                                                   (uri-port con-uri)
+                                                   #-(or ecl clisp) :timeout #-(or ecl clisp) timeout
+                                                                    :element-type '(unsigned-byte 8))))
+                        (scheme (uri-scheme uri)))
+                   (declare (type string scheme))
+                   (if (string= scheme "https")
+                       #+dexador-no-ssl
+                       (error "SSL not supported. Remove :dexador-no-ssl from *features* to enable SSL.")
+                       #-dexador-no-ssl
+                       (progn
+                         (cl+ssl:ensure-initialized)
+                         (setf (cl+ssl:ssl-check-verify-p) (not insecure))
+                         (let ((ctx (cl+ssl:make-context :verify-mode
+                                                         (if insecure
+                                                             cl+ssl:+ssl-verify-none+
+                                                             cl+ssl:+ssl-verify-peer+)
+                                                         :verify-location
+                                                         (cond
+                                                           (ca-path (uiop:native-namestring ca-path))
+                                                           ((probe-file *ca-bundle*) *ca-bundle*)
+                                                           ;; In executable environment, perhaps *ca-bundle* doesn't exist.
+                                                           (t :default)))))
+                           (cl+ssl:with-global-context (ctx :auto-free-p t)
+                             (cl+ssl:make-ssl-client-stream (if proxy
+                                                                (make-connect-stream uri version stream)
+                                                                stream)
+                                                            :hostname (uri-host uri)
+                                                            :certificate ssl-cert-file
+                                                            :key ssl-key-file
+                                                            :password ssl-key-password))))
+                       stream))
+               (retry-request ()
+                 :report "Retry the same request."
+                 (apply #'request uri :use-connection-pool nil args))))
            (connection-keep-alive-p (connection-header)
              (and keep-alive
                   (or (and (= (the single-float version) 1.0)
@@ -545,15 +544,20 @@
                                                    stream (make-new-connection uri))
                                              (go retry)))))
                           ,@body)
-                        (progn ,@body))))
+                        (restart-case
+                            (progn ,@body)
+                          (retry-request ()
+                            :report "Retry the same request."
+                            (apply #'request uri :use-connection-pool nil args))))))
         (tagbody
          retry
-           (write-sequence first-line-data stream)
-           (write-sequence headers-data stream)
-           (when cookie-headers
-             (write-sequence cookie-headers stream))
-           (write-sequence +crlf+ stream)
-           (with-retrying (force-output stream))
+           (with-retrying
+             (write-sequence first-line-data stream)
+             (write-sequence headers-data stream)
+             (when cookie-headers
+               (write-sequence cookie-headers stream))
+             (write-sequence +crlf+ stream)
+             (force-output stream))
 
            ;; Sending the content
            (when content
@@ -562,18 +566,19 @@
                                stream)))
                (when chunkedp
                  (setf (chunga:chunked-stream-output-chunking-p stream) t))
-               (etypecase content
-                 (string
-                  (write-sequence (babel:string-to-octets content) stream))
-                 ((array (unsigned-byte 8) *)
-                  (write-sequence content stream))
-                 (pathname (with-open-file (in content :element-type '(unsigned-byte 8))
-                             (copy-stream in stream)))
-                 (cons
-                  (write-multipart-content content boundary stream)))
-               (when chunkedp
-                 (setf (chunga:chunked-stream-output-chunking-p stream) nil))
-               (with-retrying (finish-output stream))))
+               (with-retrying
+                 (etypecase content
+                   (string
+                    (write-sequence (babel:string-to-octets content) stream))
+                   ((array (unsigned-byte 8) *)
+                    (write-sequence content stream))
+                   (pathname (with-open-file (in content :element-type '(unsigned-byte 8))
+                               (copy-stream in stream)))
+                   (cons
+                    (write-multipart-content content boundary stream)))
+                 (when chunkedp
+                   (setf (chunga:chunked-stream-output-chunking-p stream) nil))
+                 (finish-output stream))))
 
          start-reading
            (multiple-value-bind (http body response-headers-data transfer-encoding-p)
@@ -584,11 +589,12 @@
                (when (= status 0)
                  (unless reusing-stream-p
                    ;; There's nothing we can do.
-                   (http-request-failed-with-restarts status
-                                                      :body body
-                                                      :headers headers
-                                                      :uri uri
-                                                      :method method))
+                   (with-restarts
+                     (http-request-failed status
+                                          :body body
+                                          :headers headers
+                                          :uri uri
+                                          :method method)))
                  (setf use-connection-pool nil
                        reusing-stream-p nil
                        stream (make-new-connection uri))
@@ -664,11 +670,12 @@
                                                (gethash "connection" response-headers)))))
                       ;; Raise an error when the HTTP response status code is 4xx or 50x.
                       (when (<= 400 status)
-                        (http-request-failed-with-restarts status
-                                                           :body body
-                                                           :headers response-headers
-                                                           :uri uri
-                                                           :method method))
+                        (with-restarts
+                          (http-request-failed status
+                                               :body body
+                                               :headers response-headers
+                                               :uri uri
+                                               :method method)))
                       (return-from request
                         (values body
                                 status
