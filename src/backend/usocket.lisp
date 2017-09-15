@@ -423,7 +423,8 @@
                        stream))
                (retry-request ()
                  :report "Retry the same request."
-                 (apply #'request uri :use-connection-pool nil args))))
+                 (return-from request
+                   (apply #'request uri :use-connection-pool nil args)))))
            (connection-keep-alive-p (connection-header)
              (and keep-alive
                   (or (and (= (the single-float version) 1.0)
@@ -548,7 +549,8 @@
                             (progn ,@body)
                           (retry-request ()
                             :report "Retry the same request."
-                            (apply #'request uri :use-connection-pool nil args))))))
+                            (return-from request
+                              (apply #'request uri :use-connection-pool nil args)))))))
         (tagbody
          retry
            (with-retrying
