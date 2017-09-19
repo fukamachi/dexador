@@ -368,7 +368,7 @@
 
 (defun-careful request (uri &rest args
                             &key (method :get) (version 1.1)
-                            content headers
+                            content content-type headers
                             basic-auth
                             cookie-jar
                             (timeout *default-timeout*) (keep-alive t) (use-connection-pool t)
@@ -493,6 +493,10 @@
                                                    (car basic-auth)
                                                    (cdr basic-auth))))))
                  (cond
+                   (content-type
+                    (write-header* :content-type content-type)
+                    (unless chunkedp
+                      (write-header* :content-length (length (the (simple-array (unsigned-byte 8) *) (babel:string-to-octets content))))))
                    (multipart-p
                     (write-header* :content-type (format nil "multipart/form-data; boundary=~A" boundary))
                     (unless chunkedp
