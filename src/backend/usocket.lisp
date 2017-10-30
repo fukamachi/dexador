@@ -401,7 +401,6 @@
                        #-dexador-no-ssl
                        (progn
                          (cl+ssl:ensure-initialized)
-                         (setf (cl+ssl:ssl-check-verify-p) (not insecure))
                          (let ((ctx (cl+ssl:make-context :verify-mode
                                                          (if insecure
                                                              cl+ssl:+ssl-verify-none+
@@ -417,6 +416,7 @@
                                                                 (make-connect-stream uri version stream)
                                                                 stream)
                                                             :hostname (uri-host uri)
+                                                            :verify (not insecure)
                                                             :certificate ssl-cert-file
                                                             :key ssl-key-file
                                                             :password ssl-key-password))))
