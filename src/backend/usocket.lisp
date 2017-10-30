@@ -343,6 +343,9 @@
   `(restart-case (progn ,@body)
      (retry-request ()
        :report "Retry the same request."
+       (setf use-connection-pool nil
+             reusing-stream-p nil
+             stream (make-new-connection uri))
        (go retry))
      (ignore-and-continue ()
        :report "Ignore the error and continue.")))
