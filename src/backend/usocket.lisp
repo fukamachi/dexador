@@ -450,6 +450,10 @@
            (content (if form-urlencoded-p
                         (quri:url-encode-params content)
                         content))
+           (content-type
+             (loop for (name . value) in headers do
+               (when (eq name :content-type)
+                 (return value))))
            (stream (or stream
                        (and use-connection-pool
                             (steal-connection (format nil "~A://~A"
@@ -496,6 +500,8 @@
                                                    (car basic-auth)
                                                    (cdr basic-auth))))))
                  (cond
+                   (content-type
+                    (write-header* :content-type content-type))
                    (multipart-p
                     (write-header* :content-type (format nil "multipart/form-data; boundary=~A" boundary))
                     (unless chunkedp
