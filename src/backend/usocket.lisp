@@ -501,7 +501,9 @@
                                                    (cdr basic-auth))))))
                  (cond
                    (content-type
-                    (write-header* :content-type content-type))
+                    (write-header* :content-type content-type)
+                    (if-let ((content-length (assoc :content-length headers :test #'string-equal)))
+		      (write-header* :content-length (cdr content-length))))
                    (multipart-p
                     (write-header* :content-type (format nil "multipart/form-data; boundary=~A" boundary))
                     (unless chunkedp
