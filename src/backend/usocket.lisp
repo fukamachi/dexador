@@ -441,19 +441,19 @@
                                           (uri-authority uri)) stream)
                  (ignore-errors (close stream)))))
     (let* ((uri (quri:uri uri))
-           (multipart-p (and (consp content)
+           (content-type
+             (find :content-type headers :key #'car :test #'eq))
+           (multipart-p (and (not content-type)
+                             (consp content)
                              (find-if #'pathnamep content :key #'cdr)))
-           (form-urlencoded-p (and (consp content)
+           (form-urlencoded-p (and (not content-type)
+                                   (consp content)
                                    (not multipart-p)))
            (boundary (and multipart-p
                           (make-random-string 12)))
            (content (if form-urlencoded-p
                         (quri:url-encode-params content)
                         content))
-           (content-type
-             (loop for (name . value) in headers do
-               (when (eq name :content-type)
-                 (return value))))
            (stream (or stream
                        (and use-connection-pool
                             (steal-connection (format nil "~A://~A"
@@ -500,8 +500,6 @@
                                                    (car basic-auth)
                                                    (cdr basic-auth))))))
                  (cond
-                   (content-type
-                    (write-header* :content-type content-type))
                    (multipart-p
                     (write-header* :content-type (format nil "multipart/form-data; boundary=~A" boundary))
                     (unless chunkedp
@@ -515,15 +513,15 @@
                     (etypecase content
                       (null)
                       (string
-                       (write-header* :content-type "text/plain")
+                       (write-header* :content-type (or content-type "text/plain"))
                        (unless chunkedp
                          (write-header* :content-length (length (the (simple-array (unsigned-byte 8) *) (babel:string-to-octets content))))))
                       ((array (unsigned-byte 8) *)
-                       (write-header* :content-type "text/plain")
+                       (write-header* :content-type (or content-type "text/plain"))
                        (unless chunkedp
                          (write-header* :content-length (length content))))
                       (pathname
-                       (write-header* :content-type (mimes:mime content))
+                       (write-header* :content-type (or content-type (mimes:mime content)))
                        (unless chunkedp
                          (if-let ((content-length (assoc :content-length headers :test #'string-equal)))
                            (write-header :content-length (cdr content-length))
