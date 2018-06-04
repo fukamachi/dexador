@@ -394,7 +394,7 @@
                           (usocket:socket-stream
                            (usocket:socket-connect (uri-host con-uri)
                                                    (uri-port con-uri)
-                                                   #-(or ecl clisp) :timeout #-(or ecl clisp) timeout
+                                                   #-(or ecl clisp allegro) :timeout #-(or ecl clisp allegro) timeout
                                                                     :element-type '(unsigned-byte 8))))
                         (scheme (uri-scheme uri)))
                    (declare (type string scheme))
