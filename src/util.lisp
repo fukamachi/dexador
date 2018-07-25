@@ -141,7 +141,7 @@
      (let ((*header-buffer* ,buffer))
        ,@body)))
 
-(defun write-connect-header (uri version buffer)
+(defun write-connect-header (uri version buffer &optional proxy-auth)
   (fast-write-sequence (ascii-string-to-octets "CONNECT") buffer)
   (fast-write-byte #.(char-code #\Space) buffer)
   (fast-write-sequence (ascii-string-to-octets (format nil "~A:~A"
@@ -160,6 +160,11 @@
                                                        (uri-host uri)
                                                        (uri-port uri)))
                        buffer)
+  (when proxy-auth
+    (fast-write-sequence +crlf+ buffer)
+    (fast-write-sequence (ascii-string-to-octets "Proxy-Authorization:") buffer)
+    (fast-write-byte #.(char-code #\Space) buffer)
+    (fast-write-sequence (ascii-string-to-octets proxy-auth) buffer))
   (fast-write-sequence +crlf+ buffer)
   (fast-write-sequence +crlf+ buffer))
 
