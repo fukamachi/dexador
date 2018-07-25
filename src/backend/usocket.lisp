@@ -499,6 +499,13 @@
                                            (format nil "~A:~A"
                                                    (car basic-auth)
                                                    (cdr basic-auth))))))
+                 (when proxy
+                   (let* ((uri (quri:uri proxy))
+                          (proxy-auth (quri:uri-userinfo uri)))
+                     (when proxy-auth
+                       (write-header* :proxy-authorization
+                                      (format nil "Basic ~A"
+                                              (string-to-base64-string proxy-auth))))))
                  (cond
                    (multipart-p
                     (write-header* :content-type (format nil "multipart/form-data; boundary=~A" boundary))
