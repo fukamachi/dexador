@@ -662,6 +662,7 @@
                              (setq reusing-stream-p t))
                          (go retry))
                        (progn
+                         (setf location-uri (quri:merge-uris location-uri uri))
                          (finalize-connection stream (gethash "connection" response-headers) uri)
                          (setf (getf args :headers)
                                (nconc `((:host . ,(uri-host location-uri))) headers))
