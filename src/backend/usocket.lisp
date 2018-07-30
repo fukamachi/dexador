@@ -182,12 +182,11 @@
        (let ((buf (make-array content-length :element-type '(unsigned-byte 8))))
          (read-sequence buf stream)
          (setq body buf)))
-      ((or (not transfer-encoding-p)
-           (let ((status (http-status http)))
-             (or (= status 100)    ;; Continue
-                 (= status 101)    ;; Switching Protocols
-                 (= status 204)    ;; No Content
-                 (= status 304)))) ;; Not Modified
+      ((let ((status (http-status http)))
+         (or (= status 100)    ;; Continue
+             (= status 101)    ;; Switching Protocols
+             (= status 204)    ;; No Content
+             (= status 304))) ;; Not Modified
        (setq body +empty-body+))
       (T
        (setq body-data (make-output-buffer))
