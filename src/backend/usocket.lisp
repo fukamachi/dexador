@@ -654,9 +654,11 @@
                            (setq cookie-headers (build-cookie-headers uri cookie-jar)))
                          (decf max-redirects)
                          (if (equalp (gethash "connection" response-headers) "close")
-                             (setq use-connection-pool nil
-                                   reusing-stream-p nil
-                                   stream (make-new-connection uri))
+                             (progn
+                               (finalize-connection stream (gethash "connection" response-headers) uri)
+                               (setq use-connection-pool nil
+                                     reusing-stream-p nil
+                                     stream (make-new-connection uri)))
                              (setq reusing-stream-p t))
                          (go retry))
                        (progn
