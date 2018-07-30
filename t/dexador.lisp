@@ -86,7 +86,7 @@
           ((= id 3)
            '(200 (:content-length 2) ("OK")))
           ((<= 300 id 399)
-           '(302 (:location "/200") ()))
+           `(,id (:location "/200") ()))
           ((= id 200)
            (let ((method (princ-to-string (getf env :request-method))))
              `(200 (:content-length ,(length method))
@@ -111,11 +111,20 @@
       (declare (ignore body))
       (is code 302)
       (is (gethash "location" headers) "/12")))
-  (subtest "Don't redirect POST"
-    (multiple-value-bind (body code)
+  (subtest "POST redirects as GET"
+    (multiple-value-bind (body code headers uri)
         (dex:post (localhost "/301"))
-      (declare (ignore body))
-      (is code 302))))
+      (declare (ignore headers))
+      (is body "GET")
+      (is code 200)
+      (is (quri:uri-path uri) "/200")))
+  (subtest "POST redirects as POST for 307"
+    (multiple-value-bind (body code headers uri)
+        (dex:post (localhost "/307"))
+      (declare (ignore headers))
+      (is body "POST")
+      (is code 200)
+      (is (quri:uri-path uri) "/200"))))
 
 (subtest "content-disposition"
   (is (dexador.backend.usocket::content-disposition "upload" #P"data/plain-file.txt")
