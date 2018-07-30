@@ -622,7 +622,6 @@
                                                                                    (uri-path uri))))
                                                       set-cookies)))))
                (when (and (member status '(301 302 303 307) :test #'=)
-                          (member method '(:get :head) :test #'eq)
                           (gethash "location" response-headers)
                           (/= max-redirects 0))
                  ;; Need to read the response body
@@ -637,13 +636,15 @@
                         (read-until-crlf*2 body)))))
 
                  (let ((location-uri (quri:uri (gethash "location" response-headers))))
-                   (if (or (null (uri-host location-uri))
-                           (and (string= (uri-scheme location-uri)
-                                         (uri-scheme uri))
-                                (string= (uri-host location-uri)
-                                         (uri-host uri))
-                                (eql (uri-port location-uri)
-                                     (uri-port uri))))
+                   (if (and (or (null (uri-host location-uri))
+                                (and (string= (uri-scheme location-uri)
+                                              (uri-scheme uri))
+                                     (string= (uri-host location-uri)
+                                              (uri-host uri))
+                                     (eql (uri-port location-uri)
+                                          (uri-port uri))))
+                            (or (= status 307)
+                                (member method '(:get :head) :test #'eq)))
                        (progn
                          (setq uri (merge-uris location-uri uri))
                          (setq first-line-data
@@ -662,11 +663,16 @@
                              (setq reusing-stream-p t))
                          (go retry))
                        (progn
+                         (setf location-uri (quri:merge-uris location-uri uri))
                          (finalize-connection stream (gethash "connection" response-headers) uri)
                          (setf (getf args :headers)
                                (nconc `((:host . ,(uri-host location-uri))) headers))
                          (setf (getf args :max-redirects)
                                (1- max-redirects))
+                         ;; Redirect as GET if it's 301, 302, 303
+                         (unless (or (= status 307)
+                                     (member method '(:get :head) :test #'eq))
+                           (setf (getf args :method) :get))
                          (return-from request
                            (apply #'request location-uri args))))))
                (unwind-protect

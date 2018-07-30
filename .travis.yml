@@ -9,8 +9,12 @@ env:
   matrix:
     - LISP=sbcl-bin COVERALLS=true
     - LISP=ccl-bin
-    - LISP=abcl-bin/1.3.3
-    - LISP=ecl
+
+matrix:
+  allow_failures:
+    # there is some issue with clisp,
+    # roswell installs ASDF3, but clisp doesn't see it
+    - env: LISP=ccl-bin
 
 addons:
   apt:
