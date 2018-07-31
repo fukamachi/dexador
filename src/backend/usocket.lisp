@@ -510,7 +510,9 @@
                       (write-header* :content-length (length (the string content)))))
                    (t
                     (etypecase content
-                      (null)
+                      (null
+                       (unless chunkedp
+                         (write-header* :content-length 0)))
                       (string
                        (write-header* :content-type (or content-type "text/plain"))
                        (unless chunkedp
