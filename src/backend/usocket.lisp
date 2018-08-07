@@ -547,6 +547,7 @@
                         (handler-bind ((error
                                          (lambda (e)
                                            (declare (ignore e))
+                                           (ignore-errors (close stream))
                                            (when reusing-stream-p
                                              (setf use-connection-pool nil
                                                    reusing-stream-p nil
