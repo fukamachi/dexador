@@ -360,13 +360,19 @@
          buffer)
         (fast-write-sequence +crlf+ buffer)))))
 
-(defun make-connect-stream (uri version stream)
+(defun make-connect-stream (uri version stream &optional proxy-auth)
   (let ((header (with-fast-output (buffer)
-                  (write-connect-header uri version buffer))))
+                  (write-connect-header uri version buffer proxy-auth))))
     (write-sequence header stream)
     (force-output stream)
     (read-until-crlf*2 stream)
     stream))
+
+(defun make-proxy-authorization (uri)
+  (let ((proxy-auth (quri:uri-userinfo uri)))
+    (when proxy-auth
+      (format nil "Basic ~A"
+              (string-to-base64-string proxy-auth)))))
 
 (defun-careful request (uri &rest args
                             &key (method :get) (version 1.1)
@@ -415,7 +421,7 @@
                                                            (t :default)))))
                            (cl+ssl:with-global-context (ctx :auto-free-p t)
                              (cl+ssl:make-ssl-client-stream (if proxy
-                                                                (make-connect-stream uri version stream)
+                                                                (make-connect-stream uri version stream (make-proxy-authorization con-uri))
                                                                 stream)
                                                             :hostname (uri-host uri)
                                                             :verify (not insecure)
@@ -498,6 +504,13 @@
                                            (format nil "~A:~A"
                                                    (car basic-auth)
                                                    (cdr basic-auth))))))
+                 (when proxy
+                   (let ((scheme (quri:uri-scheme uri)))
+                     (when (string= scheme "http")
+                       (let* ((uri (quri:uri proxy))
+                              (proxy-authorization (make-proxy-authorization uri)))
+                         (when proxy-authorization
+                           (write-header* :proxy-authorization proxy-authorization))))))
                  (cond
                    (multipart-p
                     (write-header* :content-type (format nil "multipart/form-data; boundary=~A" boundary))
