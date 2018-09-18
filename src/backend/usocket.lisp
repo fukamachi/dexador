@@ -182,12 +182,11 @@
        (let ((buf (make-array content-length :element-type '(unsigned-byte 8))))
          (read-sequence buf stream)
          (setq body buf)))
-      ((or (not transfer-encoding-p)
-           (let ((status (http-status http)))
-             (or (= status 100)    ;; Continue
-                 (= status 101)    ;; Switching Protocols
-                 (= status 204)    ;; No Content
-                 (= status 304)))) ;; Not Modified
+      ((let ((status (http-status http)))
+         (or (= status 100)    ;; Continue
+             (= status 101)    ;; Switching Protocols
+             (= status 204)    ;; No Content
+             (= status 304))) ;; Not Modified
        (setq body +empty-body+))
       (T
        (setq body-data (make-output-buffer))
@@ -524,7 +523,9 @@
                       (write-header* :content-length (length (the string content)))))
                    (t
                     (etypecase content
-                      (null)
+                      (null
+                       (unless chunkedp
+                         (write-header* :content-length 0)))
                       (string
                        (write-header* :content-type (or content-type "text/plain"))
                        (unless chunkedp
@@ -559,6 +560,7 @@
                         (handler-bind ((error
                                          (lambda (e)
                                            (declare (ignore e))
+                                           (ignore-errors (close stream))
                                            (when reusing-stream-p
                                              (setf use-connection-pool nil
                                                    reusing-stream-p nil
@@ -636,7 +638,6 @@
                                                                                    (uri-path uri))))
                                                       set-cookies)))))
                (when (and (member status '(301 302 303 307) :test #'=)
-                          (member method '(:get :head) :test #'eq)
                           (gethash "location" response-headers)
                           (/= max-redirects 0))
                  ;; Need to read the response body
@@ -651,13 +652,15 @@
                         (read-until-crlf*2 body)))))
 
                  (let ((location-uri (quri:uri (gethash "location" response-headers))))
-                   (if (or (null (uri-host location-uri))
-                           (and (string= (uri-scheme location-uri)
-                                         (uri-scheme uri))
-                                (string= (uri-host location-uri)
-                                         (uri-host uri))
-                                (eql (uri-port location-uri)
-                                     (uri-port uri))))
+                   (if (and (or (null (uri-host location-uri))
+                                (and (string= (uri-scheme location-uri)
+                                              (uri-scheme uri))
+                                     (string= (uri-host location-uri)
+                                              (uri-host uri))
+                                     (eql (uri-port location-uri)
+                                          (uri-port uri))))
+                            (or (= status 307)
+                                (member method '(:get :head) :test #'eq)))
                        (progn
                          (setq uri (merge-uris location-uri uri))
                          (setq first-line-data
@@ -668,17 +671,24 @@
                            (setq cookie-headers (build-cookie-headers uri cookie-jar)))
                          (decf max-redirects)
                          (if (equalp (gethash "connection" response-headers) "close")
-                             (setq use-connection-pool nil
-                                   reusing-stream-p nil
-                                   stream (make-new-connection uri))
+                             (progn
+                               (finalize-connection stream (gethash "connection" response-headers) uri)
+                               (setq use-connection-pool nil
+                                     reusing-stream-p nil
+                                     stream (make-new-connection uri)))
                              (setq reusing-stream-p t))
                          (go retry))
                        (progn
+                         (setf location-uri (quri:merge-uris location-uri uri))
                          (finalize-connection stream (gethash "connection" response-headers) uri)
                          (setf (getf args :headers)
                                (nconc `((:host . ,(uri-host location-uri))) headers))
                          (setf (getf args :max-redirects)
                                (1- max-redirects))
+                         ;; Redirect as GET if it's 301, 302, 303
+                         (unless (or (= status 307)
+                                     (member method '(:get :head) :test #'eq))
+                           (setf (getf args :method) :get))
                          (return-from request
                            (apply #'request location-uri args))))))
                (unwind-protect
