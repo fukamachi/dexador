@@ -40,7 +40,10 @@
            :response-status
            :response-headers
            :request-uri
-           :request-method))
+           :request-method
+
+           ;; Proxy errors
+           :socks5-proxy-request-failed))
 (in-package :dexador.error)
 
 (define-condition http-request-failed (error)
@@ -115,3 +118,11 @@
          :headers headers
          :uri uri
          :method method))
+
+(define-condition socks5-proxy-request-failed (http-request-failed)
+  ((reason :initarg :reason))
+  (:report (lambda (condition stream)
+             (with-slots (uri reason) condition
+               (format stream "An HTTP request to ~S via SOCKS5 has failed (reason=~S)."
+                       (quri:render-uri uri)
+                       reason)))))

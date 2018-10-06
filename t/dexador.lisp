@@ -8,7 +8,7 @@
                 :localhost))
 (in-package :dexador-test)
 
-(plan 17)
+(plan 26)
 
 (defun random-port ()
   "Return a port number not in use from 50000 to 60000."
@@ -78,6 +78,69 @@
                     :proxy (localhost))
       (is code 200)
       (is body (localhost "/foo")))))
+
+(subtest-app "proxy (socks5) case"
+    (flet ((check (uri in out)
+             (flexi-streams:with-input-from-sequence (in in)
+               (equalp
+                (flexi-streams:with-output-to-sequence (out :element-type '(unsigned-byte 8))
+                  (dexador.backend.usocket::ensure-socks5-connected in out (quri:uri uri) :get))
+                out))))
+      (ok (check "http://example.com/"
+             #(5 0
+               5 0 0  1  0 0 0 0  0 0)
+             #(5 1 0
+               5 1 0  3 11 101 120 97 109 112 108 101 46 99 111 109  0 80)))
+      (ok (check "https://example.com/"
+             #(5 0
+               5 0 0  1  0 0 0 0  0 0)
+             #(5 1 0
+               5 1 0  3 11 101 120 97 109 112 108 101 46 99 111 109  1 187)))
+      (ok (check "http://example.com:8080/"
+             #(5 0
+               5 0 0  1  0 0 0 0  0 0)
+             #(5 1 0
+               5 1 0  3 11 101 120 97 109 112 108 101 46 99 111 109  31 144)))
+      (ok (check "https://example.com:8080/"
+             #(5 0
+               5 0 0  1  0 0 0 0  0 0)
+             #(5 1 0
+               5 1 0  3 11 101 120 97 109 112 108 101 46 99 111 109  31 144)))
+      (ok (check "http://example.com/"
+                 #(5 0
+                   5 0 0  4  0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0  0 0)
+                 #(5 1 0
+                   5 1 0  3 11 101 120 97 109 112 108 101 46 99 111 109  0 80)))
+      (ok (check "http://example.com/"
+                 #(5 0
+                   5 0 0  3  1 0  0 0)
+                 #(5 1 0
+                   5 1 0  3 11 101 120 97 109 112 108 101 46 99 111 109  0 80)))
+      (handler-case
+          (check "http://example.com/"
+                 #(4)
+                 #())
+        (dex:socks5-proxy-request-failed ()
+          (ok t)))
+      (handler-case
+          (check "http://example.com/"
+                 #(5 255)
+                 #())
+        (dex:socks5-proxy-request-failed ()
+          (ok t))))
+
+    #+needs-Tor-running-on-localhost
+    (let ((proxy "socks5://127.0.0.1:9150"))
+      (subtest "SOCKS5 GET"
+        (multiple-value-bind (body code)
+            (dex:get "http://duskgytldkxiuqc6.onion/" :proxy proxy)
+          (declare (ignore body))
+          (is code 200)))
+      (subtest "SOCKS5 GET with SSL"
+        (multiple-value-bind (body code)
+            (dex:get "https://www.facebookcorewwwi.onion/" :proxy proxy)
+          (declare (ignore body))
+          (is code 200)))))
 
 (subtest-app "redirection"
     (lambda (env)
