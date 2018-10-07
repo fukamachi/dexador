@@ -198,6 +198,12 @@ You can connect via proxy.
 (dex:get "http://lisp.org/" :proxy "http://proxy.yourcompany.com:8080/")
 ```
 
+You can connect via SOCKS5 proxy.
+
+```common-lisp
+(dex:get "https://www.facebookcorewwwi.onion/" :proxy "socks5://127.0.0.1:9150")
+```
+
 ## Functions
 
 All functions take similar arguments.

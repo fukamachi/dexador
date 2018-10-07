@@ -13,7 +13,8 @@
                 :make-keep-alive-stream)
   (:import-from :dexador.error
                 :http-request-failed
-                :http-request-not-found)
+                :http-request-not-found
+                :socks5-proxy-request-failed)
   (:import-from :usocket
                 :socket-connect
                 :socket-stream)
@@ -374,6 +375,76 @@
       (format nil "Basic ~A"
               (string-to-base64-string proxy-auth)))))
 
+(defconstant +socks5-version+ 5)
+(defconstant +socks5-reserved+ 0)
+(defconstant +socks5-no-auth+ 0)
+(defconstant +socks5-connect+ 1)
+(defconstant +socks5-domainname+ 3)
+(defconstant +socks5-succeeded+ 0)
+(defconstant +socks5-ipv4+ 1)
+(defconstant +socks5-ipv6+ 4)
+
+(defun ensure-socks5-connected (input output uri http-method)
+  (labels ((fail (condition &key reason)
+             (error (make-condition condition
+                                    :body nil :status nil :headers nil
+                                    :uri uri
+                                    :method http-method
+                                    :reason reason)))
+           (exact (n reason)
+             (unless (eql n (read-byte input nil 'eof))
+               (fail 'dexador.error:socks5-proxy-request-failed :reason reason)))
+           (drop (n reason)
+             (dotimes (i n)
+               (when (eq (read-byte input nil 'eof) 'eof)
+                 (fail 'dexador.error:socks5-proxy-request-failed :reason reason)))))
+    ;; Send Version + Auth Method
+    ;; Currently, only supports no-auth method.
+    (write-byte +socks5-version+ output)
+    (write-byte 1 output)
+    (write-byte +socks5-no-auth+ output)
+    (finish-output output)
+
+    ;; Receive Auth Method
+    (exact +socks5-version+ "Unexpected version")
+    (exact +socks5-no-auth+ "Unsupported auth method")
+
+    ;; Send domainname Request
+    (let* ((host (babel:string-to-octets (uri-host uri)))
+           (hostlen (length host))
+           (port (uri-port uri)))
+      (unless (<= 1 hostlen 255)
+        (fail 'dexador.error:socks5-proxy-request-failed :reason "domainname too long"))
+      (unless (<= 1 port 65535)
+        (fail 'dexador.error:socks5-proxy-request-failed :reason "Invalid port"))
+      (write-byte +socks5-version+ output)
+      (write-byte +socks5-connect+ output)
+      (write-byte +socks5-reserved+ output)
+      (write-byte +socks5-domainname+ output)
+      (write-byte hostlen output)
+      (write-sequence host output)
+      (write-byte (ldb (byte 8 8) port) output)
+      (write-byte (ldb (byte 8 0) port) output)
+      (finish-output output)
+
+      ;; Receive reply
+      (exact +socks5-version+ "Unexpected version")
+      (exact +socks5-succeeded+ "Unexpected result code")
+      (drop 1 "Should be reserved byte")
+      (let ((atyp (read-byte input nil 'eof)))
+        (cond
+          ((eql atyp +socks5-ipv4+)
+           (drop 6 "Should be IPv4 address and port"))
+          ((eql atyp +socks5-ipv6+)
+           (drop 18 "Should be IPv6 address and port"))
+          ((eql atyp +socks5-domainname+)
+           (let ((n (read-byte input nil 'eof)))
+             (when (eq n 'eof)
+               (fail 'dexador.error:socks5-proxy-request-failed :reason "Invalid domainname length"))
+             (drop n "Should be domainname and port")))
+          (t
+           (fail 'dexador.error:socks5-proxy-request-failed :reason "Unknown address")))))))
+
 (defun-careful request (uri &rest args
                             &key (method :get) (version 1.1)
                             content headers
@@ -387,7 +458,9 @@
                             want-stream
                             proxy
                             (insecure *not-verify-ssl*)
-                            ca-path)
+                            ca-path
+                            &aux
+                            (proxy-uri (and proxy (quri:uri proxy))))
   (declare (ignorable ssl-key-file ssl-cert-file ssl-key-password
                       timeout ca-path)
            (type single-float version)
@@ -403,6 +476,8 @@
                                                                     :element-type '(unsigned-byte 8))))
                         (scheme (uri-scheme uri)))
                    (declare (type string scheme))
+                   (when (socks5-proxy-p proxy-uri)
+                     (ensure-socks5-connected stream stream uri method))
                    (if (string= scheme "https")
                        #+dexador-no-ssl
                        (error "SSL not supported. Remove :dexador-no-ssl from *features* to enable SSL.")
@@ -420,7 +495,7 @@
                                                            ;; In executable environment, perhaps *ca-bundle* doesn't exist.
                                                            (t :default)))))
                            (cl+ssl:with-global-context (ctx :auto-free-p t)
-                             (cl+ssl:make-ssl-client-stream (if proxy
+                             (cl+ssl:make-ssl-client-stream (if (http-proxy-p proxy-uri)
                                                                 (make-connect-stream uri version stream (make-proxy-authorization con-uri))
                                                                 stream)
                                                             :hostname (uri-host uri)
@@ -433,6 +508,17 @@
                  :report "Retry the same request."
                  (return-from request
                    (apply #'request uri :use-connection-pool nil args)))))
+           (http-proxy-p (uri)
+             (and uri
+                  (let ((scheme (uri-scheme uri)))
+                    (and (stringp scheme)
+                         (or (string= scheme "http")
+                             (string= scheme "https"))))))
+           (socks5-proxy-p (uri)
+             (and uri
+                  (let ((scheme (uri-scheme uri)))
+                    (and (stringp scheme)
+                         (string= scheme "socks5")))))
            (connection-keep-alive-p (connection-header)
              (and keep-alive
                   (or (and (= (the single-float version) 1.0)
@@ -446,6 +532,7 @@
                                           (uri-authority uri)) stream)
                  (ignore-errors (close stream)))))
     (let* ((uri (quri:uri uri))
+           (proxy (when (http-proxy-p proxy-uri) proxy))
            (content-type
              (find :content-type headers :key #'car :test #'eq))
            (multipart-p (and (not content-type)
