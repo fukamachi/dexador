@@ -534,7 +534,7 @@
     (let* ((uri (quri:uri uri))
            (proxy (when (http-proxy-p proxy-uri) proxy))
            (content-type
-             (find :content-type headers :key #'car :test #'eq))
+             (cdr (find :content-type headers :key #'car :test #'eq)))
            (multipart-p (and (not content-type)
                              (consp content)
                              (find-if #'pathnamep content :key #'cdr)))
