@@ -164,7 +164,7 @@ Dexador reuses a connection by default. As it skips a TCP handshake, it would be
 
 ### Handling unexpected HTTP status code
 
-Dexador singals a condition `http-request-failed` when the server returned 4xx or 5xx status code.
+Dexador signals a condition `http-request-failed` when the server returned 4xx or 5xx status code.
 
 ```common-lisp
 ;; Handles 400 bad request
