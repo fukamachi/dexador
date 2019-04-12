@@ -1,13 +1,11 @@
 (in-package :cl-user)
 (defpackage dexador
   (:nicknames :dex)
-  (:use :cl)
+  (:use :cl
+        #-windows #:dexador.backend.usocket
+        #+windows #:dexador.backend.winhttp)
   (:shadow :get
            :delete)
-  (:import-from :dexador.backend.usocket
-                :request
-                :retry-request
-                :ignore-and-continue)
   (:import-from :dexador.connection-cache
                 :*connection-pool*
                 :*use-connection-pool*

@@ -11,8 +11,8 @@
   :version "0.9.10"
   :author "Eitaro Fukamachi"
   :license "MIT"
-  :depends-on ("usocket"
-               "fast-http"
+  :defsystem-depends-on ("trivial-features")
+  :depends-on ("fast-http"
                "quri"
                "fast-io"
                "babel"
@@ -24,7 +24,9 @@
                "chipz"
                "cl-base64"
                "cl-reexport"
-               (:feature (:not :dexador-no-ssl) "cl+ssl")
+               (:feature (:not :windows) "usocket")
+               (:feature :windows "winhttp")
+               (:feature (:and (:not :windows) (:not :dexador-no-ssl)) "cl+ssl")
                "bordeaux-threads"
                "alexandria")
   :components ((:module "src"
@@ -34,12 +36,14 @@
                  (:file "connection-cache")
                  (:file "decoding-stream")
                  (:file "keep-alive-stream")
+                 (:file "body" :depends-on ("encoding" "decoding-stream" "util"))
                  (:file "error")
                  (:file "util")
                  (:module "backend"
-                  :depends-on ("encoding" "connection-cache" "decoding-stream" "keep-alive-stream" "error" "util")
+                  :depends-on ("encoding" "connection-cache" "decoding-stream" "keep-alive-stream" "body" "error" "util")
                   :components
-                  ((:file "usocket"))))))
+                  ((:file "usocket" :if-feature (:not :windows))
+                   (:file "winhttp" :if-feature :windows))))))
   :description "Yet another HTTP client for Common Lisp"
   :long-description #.(read-file-string (subpathname *load-pathname* "README.markdown"))
   :in-order-to ((test-op (test-op "dexador-test"))))
