@@ -14,8 +14,15 @@
   (:import-from #:fast-io
                 #:fast-output-stream
                 #:finish-output-stream)
+  (:import-from #:cl-cookie
+                #:cookie-jar-host-cookies
+                #:write-cookie-header
+                #:parse-set-cookie-header
+                #:merge-cookies)
   (:import-from #:alexandria
-                #:read-file-into-byte-vector)
+                #:read-file-into-byte-vector
+                #:ensure-list
+                #:when-let)
   (:import-from #:split-sequence
                 #:split-sequence)
   (:export :request
@@ -98,6 +105,15 @@
       (when (and (null content-type)
                  detected-content-type)
         (setf headers (append `(("Content-Type" . ,detected-content-type)) headers)))
+
+      (when cookie-jar
+        (let ((cookies
+                (cookie-jar-host-cookies cookie-jar (quri:uri-host uri) (or (quri:uri-path uri) "/")
+                                         :securep (string= (quri:uri-scheme uri) "https"))))
+          (when cookies
+            (setf headers
+                  (append headers
+                          `(("Cookie" . ,(write-cookie-header cookies))))))))
       (with-http (session)
         (with-connect (conn session (quri:uri-host uri) (quri:uri-port uri))
           (with-request (req conn :verb method
@@ -109,7 +125,6 @@
               (destructuring-bind (user pass) (split-sequence #\: (quri:uri-userinfo uri))
                 (set-credentials req user pass)))
 
-            ;; TODO: cookie support
             ;; TODO: SSL arguments
             ;; TODO: proxy support
             (set-option req
@@ -135,6 +150,17 @@
 
             (let ((status (query-status-code req))
                   (response-headers (query-headers* req)))
+              (when cookie-jar
+                (when-let (set-cookies (append (ensure-list (gethash "set-cookie" response-headers))
+                                               (ensure-list (gethash "set-cookie2" response-headers))))
+                  (merge-cookies cookie-jar
+                                 (remove nil (mapcar (lambda (cookie)
+                                                       (declare (type string cookie))
+                                                       (unless (= (length cookie) 0)
+                                                         (parse-set-cookie-header cookie
+                                                                                  (quri:uri-host uri)
+                                                                                  (quri:uri-path uri))))
+                                                     set-cookies)))))
               (let* ((bytes (query-data-available req))
                      (body (make-array bytes :element-type '(unsigned-byte 8))))
                 (read-data req body)
