@@ -100,7 +100,9 @@
                    ca-path))
   (let ((uri (quri:uri uri))
         (content-type
-          (find :content-type headers :key #'car :test #'eq)))
+          (find :content-type headers :key #'car :test #'string-equal))
+        (user-agent
+          (find :user-agent headers :key #'car :test #'string-equal)))
     (multiple-value-bind (content detected-content-type) (convert-content content)
       (when (and (null content-type)
                  detected-content-type)
@@ -114,7 +116,7 @@
             (setf headers
                   (append headers
                           `(("Cookie" . ,(write-cookie-header cookies))))))))
-      (with-http (session)
+      (with-http (session (or user-agent *default-user-agent*))
         (with-connect (conn session (quri:uri-host uri) (quri:uri-port uri))
           (with-request (req conn :verb method
                                   :url (format nil "~@[~A~]~@[?~A~]"
