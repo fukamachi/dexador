@@ -126,6 +126,9 @@
       (is code 200)
       (is (quri:uri-path uri) "/200"))))
 
+#+windows
+(skip 1 "Content-Disposition tests are skipped")
+#-windows
 (subtest "content-disposition"
   (is (dexador.backend.usocket::content-disposition "upload" #P"data/plain-file.txt")
       (format nil "Content-Disposition: form-data; name=\"upload\"; filename=\"plain-file.txt\"~C~C"
