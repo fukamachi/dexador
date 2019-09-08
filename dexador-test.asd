@@ -7,13 +7,12 @@
   :author "Eitaro Fukamachi"
   :license "MIT"
   :depends-on ("dexador"
-               "prove"
+               "rove"
                "lack-request"
                "clack-test"
                "babel"
                "cl-cookie")
   :components ((:module "t"
                 :components
-                ((:test-file "dexador"))))
-  :defsystem-depends-on ("prove-asdf")
-  :perform (test-op (op c) (symbol-call :prove-asdf :run-test-system c)))
+                ((:file "dexador"))))
+  :perform (test-op (op c) (symbol-call '#:rove '#:run c)))

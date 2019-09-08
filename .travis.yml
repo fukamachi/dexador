@@ -27,8 +27,8 @@ install:
   # nginx
   - curl -L http://nginx.org/download/nginx-1.8.0.tar.gz | tar xzf -
   - (cd nginx-1.8.0 && ./configure --prefix=$HOME/nginx && make && make install)
-  # prove
-  - ros install prove
+  # rove
+  - ros install rove
   - ros install fukamachi/clack
 
 cache:
@@ -43,5 +43,5 @@ before_script:
   - ros config
 
 script:
-  - run-prove dexador-test.asd
+  - rove dexador-test.asd
   - benchmark/bench
