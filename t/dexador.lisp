@@ -30,7 +30,7 @@
                    :headers '((:x-foo . "ppp")))
         (ok (eql code 200))
         (ok (equal body "/foo"))
-        (ok (eql (gethash "content-length" headers) 4))))
+        (ok (equal (gethash "content-length" headers) "4"))))
     (testing "HEAD"
       (multiple-value-bind (body code)
           (dex:head (localhost "/foo"))
@@ -59,8 +59,8 @@
                    :proxy (localhost))
         (ok (eql code 200))
         (ok (equal body (localhost "/foo")))
-        (ok (eql (gethash "content-length" headers)
-                 (length (localhost "/foo"))))))
+        (ok (equal (gethash "content-length" headers)
+                   (princ-to-string (length (localhost "/foo")))))))
     (testing "HEAD"
       (multiple-value-bind (body code)
           (dex:head (localhost "/foo")
@@ -164,8 +164,8 @@
           (dex:get (localhost "/1"))
         (ok (eql code 200))
         (ok (equal body "OK"))
-        (ok (eql (gethash "content-length" headers)
-                 2))))
+        (ok (equal (gethash "content-length" headers)
+                   (princ-to-string 2)))))
     (testing "not enough redirect"
       (multiple-value-bind (body code headers)
           (dex:get (localhost "/1") :max-redirects 0)
@@ -300,7 +300,8 @@ body: \"Within a couple weeks of learning Lisp I found programming in any other 
             "response status is 500")
         (ok (equal (dex:response-body e) "Internal Server Error")
             "response body is \"Internal Server Error\"")
-        (ok (eql (gethash "x-bar" (dex:response-headers e)) 1))))
+        (ok (equal (gethash "x-bar" (dex:response-headers e))
+                   "1"))))
     (handler-case
         (progn
           (dex:get (localhost "/404"))
@@ -311,7 +312,8 @@ body: \"Within a couple weeks of learning Lisp I found programming in any other 
             "response status is 404")
         (ok (equal (dex:response-body e) "Not Found")
             "response body is \"Not Found\"")
-        (ok (eql (gethash "x-foo" (dex:response-headers e)) 0))))))
+        (ok (equal (gethash "x-foo" (dex:response-headers e))
+                   "0"))))))
 
 (deftest using-cookies-tests
   (testing-app "Using cookies"

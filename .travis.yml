@@ -29,7 +29,7 @@ install:
   - (cd nginx-1.8.0 && ./configure --prefix=$HOME/nginx && make && make install)
   # rove
   - ros install rove
-  - ros install fukamachi/clack
+  - ros install fukamachi/fast-http
 
 cache:
   directories:
