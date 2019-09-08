@@ -29,7 +29,8 @@ install:
   - (cd nginx-1.8.0 && ./configure --prefix=$HOME/nginx && make && make install)
   # rove
   - ros install rove
-  - ros install fukamachi/fast-http
+  - ros install fukamachi/clack/replace-prove-by-rove
+  - ros install fukamachi/fast-http/stop-parse-number-headers
 
 cache:
   directories:
