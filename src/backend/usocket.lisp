@@ -180,7 +180,10 @@
       ((not has-body)
        (setq body +empty-body+))
       ((and content-length (not transfer-encoding-p))
-       (let ((buf (make-array content-length :element-type '(unsigned-byte 8))))
+       (let ((buf (make-array (etypecase content-length
+                                (integer content-length)
+                                (string (parse-integer content-length)))
+                              :element-type '(unsigned-byte 8))))
          (read-sequence buf stream)
          (setq body buf)))
       ((let ((status (http-status http)))
@@ -695,8 +698,13 @@
            (multiple-value-bind (http body response-headers-data transfer-encoding-p)
                (with-retrying
                    (read-response stream (not (eq method :head)) verbose (not want-stream)))
-             (let ((status (http-status http))
-                   (response-headers (http-headers http)))
+             (let* ((status (http-status http))
+                    (response-headers (http-headers http))
+                    (content-length (gethash "content-length" response-headers))
+                    (content-length (etypecase content-length
+                                      (null content-length)
+                                      (string (parse-integer content-length))
+                                      (integer content-length))))
                (when (= status 0)
                  (unless reusing-stream-p
                    ;; There's nothing we can do.
@@ -730,13 +738,12 @@
                  ;; Need to read the response body
                  (when (and want-stream
                             (not (eq method :head)))
-                   (let ((content-length (gethash "content-length" response-headers)))
-                     (cond
-                       ((integerp content-length)
-                        (dotimes (i content-length)
-                          (loop until (read-byte body nil nil))))
-                       (transfer-encoding-p
-                        (read-until-crlf*2 body)))))
+                   (cond
+                     ((integerp content-length)
+                      (dotimes (i content-length)
+                        (loop until (read-byte body nil nil))))
+                     (transfer-encoding-p
+                       (read-until-crlf*2 body))))
 
                  (let ((location-uri (quri:uri (gethash "location" response-headers))))
                    (if (and (or (null (uri-host location-uri))
@@ -782,7 +789,7 @@
                     (let ((body (convert-body body
                                               (gethash "content-encoding" response-headers)
                                               (gethash "content-type" response-headers)
-                                              (gethash "content-length" response-headers)
+                                              content-length
                                               transfer-encoding-p
                                               force-binary
                                               (connection-keep-alive-p
