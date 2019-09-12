@@ -8,7 +8,7 @@
 |#
 
 (defsystem "dexador"
-  :version "0.9.11"
+  :version "0.9.12"
   :author "Eitaro Fukamachi"
   :license "MIT"
   :depends-on ("usocket"
