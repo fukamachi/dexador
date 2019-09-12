@@ -453,7 +453,8 @@
                             content headers
                             basic-auth
                             cookie-jar
-                            (timeout *default-timeout*) (keep-alive t) (use-connection-pool t)
+                            (connect-timeout *default-connect-timeout*) (read-timeout *default-read-timeout*)
+                            (keep-alive t) (use-connection-pool t)
                             (max-redirects 5)
                             ssl-key-file ssl-cert-file ssl-key-password
                             stream (verbose *verbose*)
@@ -465,20 +466,22 @@
                             &aux
                             (proxy-uri (and proxy (quri:uri proxy))))
   (declare (ignorable ssl-key-file ssl-cert-file ssl-key-password
-                      timeout ca-path)
+                      connect-timeout ca-path)
            (type single-float version)
            (type fixnum max-redirects))
   (labels ((make-new-connection (uri)
              (restart-case
                  (let* ((con-uri (quri:uri (or proxy uri)))
+                        (connection (usocket:socket-connect (uri-host con-uri)
+                                                            (uri-port con-uri)
+                                                            #-(or ecl clisp allegro) :timeout #-(or ecl clisp allegro) connect-timeout
+                                                            :element-type '(unsigned-byte 8)))
                         (stream
-                          (usocket:socket-stream
-                           (usocket:socket-connect (uri-host con-uri)
-                                                   (uri-port con-uri)
-                                                   #-(or ecl clisp allegro) :timeout #-(or ecl clisp allegro) timeout
-                                                                    :element-type '(unsigned-byte 8))))
+                          (usocket:socket-stream connection))
                         (scheme (uri-scheme uri)))
                    (declare (type string scheme))
+                   (when read-timeout
+                     (setf (usocket:socket-option connection :receive-timeout) read-timeout))
                    (when (socks5-proxy-p proxy-uri)
                      (ensure-socks5-connected stream stream uri method))
                    (if (string= scheme "https")

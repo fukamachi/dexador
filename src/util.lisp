@@ -11,7 +11,8 @@
                 :uri-host
                 :uri-port
                 :render-uri)
-  (:export :*default-timeout*
+  (:export :*default-connect-timeout*
+           :*default-read-timeout*
            :*verbose*
            :*not-verify-ssl*
            :defun-speedy
@@ -27,7 +28,8 @@
            :make-random-string))
 (in-package :dexador.util)
 
-(defvar *default-timeout* 10)
+(defvar *default-connect-timeout* 10)
+(defvar *default-read-timeout* 10)
 (defvar *verbose* nil)
 (defvar *not-verify-ssl* nil)
 
