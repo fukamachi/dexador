@@ -237,9 +237,10 @@
          (chipz:decompress nil (chipz:make-dstate :zlib) body)))
     (T body)))
 
-(defun decode-body (content-type body)
-  (let ((charset (and content-type
-                      (detect-charset content-type body)))
+(defun decode-body (content-type body &key default-charset)
+  (let ((charset (or (and content-type
+                          (detect-charset content-type body))
+                     default-charset))
         (babel-encodings:*suppress-character-coding-errors* t))
     (if charset
         (handler-case
@@ -253,7 +254,7 @@
             (return-from decode-body body)))
         body)))
 
-(defun convert-body (body content-encoding content-type content-length chunkedp force-binary keep-alive-p)
+(defun convert-body (body content-encoding content-type content-length chunkedp force-binary force-string keep-alive-p)
   (when (and (streamp body)
              keep-alive-p)
     (cond
@@ -262,7 +263,7 @@
              (make-keep-alive-stream body :chunked t)))
       (content-length
        (setf body
-              (make-keep-alive-stream body :end content-length)))))
+             (make-keep-alive-stream body :end content-length)))))
   (let ((body (decompress-body content-encoding
                                (if (and (streamp body)
                                         chunkedp)
@@ -272,7 +273,10 @@
                                    body))))
     (if force-binary
         body
-        (decode-body content-type body))))
+        (decode-body content-type body
+                     :default-charset (if force-string
+                                          babel:*default-character-encoding*
+                                          nil)))))
 
 (defun content-disposition (key val)
   (if (pathnamep val)
@@ -458,6 +462,7 @@
                             ssl-key-file ssl-cert-file ssl-key-password
                             stream (verbose *verbose*)
                             force-binary
+                            force-string
                             want-stream
                             proxy
                             (insecure *not-verify-ssl*)
@@ -792,6 +797,7 @@
                                               content-length
                                               transfer-encoding-p
                                               force-binary
+                                              force-string
                                               (connection-keep-alive-p
                                                (gethash "connection" response-headers)))))
                       ;; Raise an error when the HTTP response status code is 4xx or 50x.
