@@ -43,7 +43,7 @@
                  (:module "backend"
                   :depends-on ("encoding" "connection-cache" "decoding-stream" "keep-alive-stream" "body" "error" "util")
                   :components
-                  ((:file "usocket" :if-feature (:not :windows))
+                  ((:file "usocket")
                    (:file "winhttp" :if-feature :windows))))))
   :description "Yet another HTTP client for Common Lisp"
   :long-description #.(read-file-string (subpathname *load-pathname* "README.markdown"))
