@@ -46,5 +46,4 @@
                   ((:file "usocket")
                    (:file "winhttp" :if-feature :windows))))))
   :description "Yet another HTTP client for Common Lisp"
-  :long-description #.(read-file-string (subpathname *load-pathname* "README.markdown"))
   :in-order-to ((test-op (test-op "dexador-test"))))
