@@ -164,7 +164,7 @@ Dexador reuses a connection by default. As it skips a TCP handshake, it would be
 
 ### Handling unexpected HTTP status code
 
-Dexador singals a condition `http-request-failed` when the server returned 4xx or 5xx status code.
+Dexador signals a condition `http-request-failed` when the server returned 4xx or 5xx status code.
 
 ```common-lisp
 ;; Handles 400 bad request
@@ -196,6 +196,12 @@ You can connect via proxy.
 
 ```common-lisp
 (dex:get "http://lisp.org/" :proxy "http://proxy.yourcompany.com:8080/")
+```
+
+You can connect via SOCKS5 proxy.
+
+```common-lisp
+(dex:get "https://www.facebookcorewwwi.onion/" :proxy "socks5://127.0.0.1:9150")
 ```
 
 ## Functions

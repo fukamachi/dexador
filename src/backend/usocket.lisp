@@ -13,7 +13,8 @@
                 :make-keep-alive-stream)
   (:import-from :dexador.error
                 :http-request-failed
-                :http-request-not-found)
+                :http-request-not-found
+                :socks5-proxy-request-failed)
   (:import-from :usocket
                 :socket-connect
                 :socket-stream)
@@ -179,7 +180,10 @@
       ((not has-body)
        (setq body +empty-body+))
       ((and content-length (not transfer-encoding-p))
-       (let ((buf (make-array content-length :element-type '(unsigned-byte 8))))
+       (let ((buf (make-array (etypecase content-length
+                                (integer content-length)
+                                (string (parse-integer content-length)))
+                              :element-type '(unsigned-byte 8))))
          (read-sequence buf stream)
          (setq body buf)))
       ((let ((status (http-status http)))
@@ -233,9 +237,10 @@
          (chipz:decompress nil (chipz:make-dstate :zlib) body)))
     (T body)))
 
-(defun decode-body (content-type body)
-  (let ((charset (and content-type
-                      (detect-charset content-type body)))
+(defun decode-body (content-type body &key default-charset)
+  (let ((charset (or (and content-type
+                          (detect-charset content-type body))
+                     default-charset))
         (babel-encodings:*suppress-character-coding-errors* t))
     (if charset
         (handler-case
@@ -249,7 +254,7 @@
             (return-from decode-body body)))
         body)))
 
-(defun convert-body (body content-encoding content-type content-length chunkedp force-binary keep-alive-p)
+(defun convert-body (body content-encoding content-type content-length chunkedp force-binary force-string keep-alive-p)
   (when (and (streamp body)
              keep-alive-p)
     (cond
@@ -258,7 +263,7 @@
              (make-keep-alive-stream body :chunked t)))
       (content-length
        (setf body
-              (make-keep-alive-stream body :end content-length)))))
+             (make-keep-alive-stream body :end content-length)))))
   (let ((body (decompress-body content-encoding
                                (if (and (streamp body)
                                         chunkedp)
@@ -268,7 +273,10 @@
                                    body))))
     (if force-binary
         body
-        (decode-body content-type body))))
+        (decode-body content-type body
+                     :default-charset (if force-string
+                                          babel:*default-character-encoding*
+                                          nil)))))
 
 (defun content-disposition (key val)
   (if (pathnamep val)
@@ -374,35 +382,113 @@
       (format nil "Basic ~A"
               (string-to-base64-string proxy-auth)))))
 
+(defconstant +socks5-version+ 5)
+(defconstant +socks5-reserved+ 0)
+(defconstant +socks5-no-auth+ 0)
+(defconstant +socks5-connect+ 1)
+(defconstant +socks5-domainname+ 3)
+(defconstant +socks5-succeeded+ 0)
+(defconstant +socks5-ipv4+ 1)
+(defconstant +socks5-ipv6+ 4)
+
+(defun ensure-socks5-connected (input output uri http-method)
+  (labels ((fail (condition &key reason)
+             (error (make-condition condition
+                                    :body nil :status nil :headers nil
+                                    :uri uri
+                                    :method http-method
+                                    :reason reason)))
+           (exact (n reason)
+             (unless (eql n (read-byte input nil 'eof))
+               (fail 'dexador.error:socks5-proxy-request-failed :reason reason)))
+           (drop (n reason)
+             (dotimes (i n)
+               (when (eq (read-byte input nil 'eof) 'eof)
+                 (fail 'dexador.error:socks5-proxy-request-failed :reason reason)))))
+    ;; Send Version + Auth Method
+    ;; Currently, only supports no-auth method.
+    (write-byte +socks5-version+ output)
+    (write-byte 1 output)
+    (write-byte +socks5-no-auth+ output)
+    (finish-output output)
+
+    ;; Receive Auth Method
+    (exact +socks5-version+ "Unexpected version")
+    (exact +socks5-no-auth+ "Unsupported auth method")
+
+    ;; Send domainname Request
+    (let* ((host (babel:string-to-octets (uri-host uri)))
+           (hostlen (length host))
+           (port (uri-port uri)))
+      (unless (<= 1 hostlen 255)
+        (fail 'dexador.error:socks5-proxy-request-failed :reason "domainname too long"))
+      (unless (<= 1 port 65535)
+        (fail 'dexador.error:socks5-proxy-request-failed :reason "Invalid port"))
+      (write-byte +socks5-version+ output)
+      (write-byte +socks5-connect+ output)
+      (write-byte +socks5-reserved+ output)
+      (write-byte +socks5-domainname+ output)
+      (write-byte hostlen output)
+      (write-sequence host output)
+      (write-byte (ldb (byte 8 8) port) output)
+      (write-byte (ldb (byte 8 0) port) output)
+      (finish-output output)
+
+      ;; Receive reply
+      (exact +socks5-version+ "Unexpected version")
+      (exact +socks5-succeeded+ "Unexpected result code")
+      (drop 1 "Should be reserved byte")
+      (let ((atyp (read-byte input nil 'eof)))
+        (cond
+          ((eql atyp +socks5-ipv4+)
+           (drop 6 "Should be IPv4 address and port"))
+          ((eql atyp +socks5-ipv6+)
+           (drop 18 "Should be IPv6 address and port"))
+          ((eql atyp +socks5-domainname+)
+           (let ((n (read-byte input nil 'eof)))
+             (when (eq n 'eof)
+               (fail 'dexador.error:socks5-proxy-request-failed :reason "Invalid domainname length"))
+             (drop n "Should be domainname and port")))
+          (t
+           (fail 'dexador.error:socks5-proxy-request-failed :reason "Unknown address")))))))
+
 (defun-careful request (uri &rest args
                             &key (method :get) (version 1.1)
                             content headers
                             basic-auth
                             cookie-jar
-                            (timeout *default-timeout*) (keep-alive t) (use-connection-pool t)
+                            (connect-timeout *default-connect-timeout*) (read-timeout *default-read-timeout*)
+                            (keep-alive t) (use-connection-pool t)
                             (max-redirects 5)
                             ssl-key-file ssl-cert-file ssl-key-password
                             stream (verbose *verbose*)
                             force-binary
+                            force-string
                             want-stream
                             proxy
                             (insecure *not-verify-ssl*)
-                            ca-path)
+                            ca-path
+                            &aux
+                            (proxy-uri (and proxy (quri:uri proxy))))
   (declare (ignorable ssl-key-file ssl-cert-file ssl-key-password
-                      timeout ca-path)
+                      connect-timeout ca-path)
            (type single-float version)
            (type fixnum max-redirects))
   (labels ((make-new-connection (uri)
              (restart-case
                  (let* ((con-uri (quri:uri (or proxy uri)))
+                        (connection (usocket:socket-connect (uri-host con-uri)
+                                                            (uri-port con-uri)
+                                                            #-(or ecl clisp allegro) :timeout #-(or ecl clisp allegro) connect-timeout
+                                                            :element-type '(unsigned-byte 8)))
                         (stream
-                          (usocket:socket-stream
-                           (usocket:socket-connect (uri-host con-uri)
-                                                   (uri-port con-uri)
-                                                   #-(or ecl clisp allegro) :timeout #-(or ecl clisp allegro) timeout
-                                                                    :element-type '(unsigned-byte 8))))
+                          (usocket:socket-stream connection))
                         (scheme (uri-scheme uri)))
                    (declare (type string scheme))
+                   (when read-timeout
+                     (setf (usocket:socket-option connection :receive-timeout) read-timeout))
+                   (when (socks5-proxy-p proxy-uri)
+                     (ensure-socks5-connected stream stream uri method))
                    (if (string= scheme "https")
                        #+dexador-no-ssl
                        (error "SSL not supported. Remove :dexador-no-ssl from *features* to enable SSL.")
@@ -420,7 +506,7 @@
                                                            ;; In executable environment, perhaps *ca-bundle* doesn't exist.
                                                            (t :default)))))
                            (cl+ssl:with-global-context (ctx :auto-free-p t)
-                             (cl+ssl:make-ssl-client-stream (if proxy
+                             (cl+ssl:make-ssl-client-stream (if (http-proxy-p proxy-uri)
                                                                 (make-connect-stream uri version stream (make-proxy-authorization con-uri))
                                                                 stream)
                                                             :hostname (uri-host uri)
@@ -433,6 +519,17 @@
                  :report "Retry the same request."
                  (return-from request
                    (apply #'request uri :use-connection-pool nil args)))))
+           (http-proxy-p (uri)
+             (and uri
+                  (let ((scheme (uri-scheme uri)))
+                    (and (stringp scheme)
+                         (or (string= scheme "http")
+                             (string= scheme "https"))))))
+           (socks5-proxy-p (uri)
+             (and uri
+                  (let ((scheme (uri-scheme uri)))
+                    (and (stringp scheme)
+                         (string= scheme "socks5")))))
            (connection-keep-alive-p (connection-header)
              (and keep-alive
                   (or (and (= (the single-float version) 1.0)
@@ -446,8 +543,9 @@
                                           (uri-authority uri)) stream)
                  (ignore-errors (close stream)))))
     (let* ((uri (quri:uri uri))
+           (proxy (when (http-proxy-p proxy-uri) proxy))
            (content-type
-             (find :content-type headers :key #'car :test #'eq))
+             (cdr (find :content-type headers :key #'car :test #'eq)))
            (multipart-p (and (not content-type)
                              (consp content)
                              (find-if #'pathnamep content :key #'cdr)))
@@ -608,8 +706,13 @@
            (multiple-value-bind (http body response-headers-data transfer-encoding-p)
                (with-retrying
                    (read-response stream (not (eq method :head)) verbose (not want-stream)))
-             (let ((status (http-status http))
-                   (response-headers (http-headers http)))
+             (let* ((status (http-status http))
+                    (response-headers (http-headers http))
+                    (content-length (gethash "content-length" response-headers))
+                    (content-length (etypecase content-length
+                                      (null content-length)
+                                      (string (parse-integer content-length))
+                                      (integer content-length))))
                (when (= status 0)
                  (unless reusing-stream-p
                    ;; There's nothing we can do.
@@ -643,13 +746,12 @@
                  ;; Need to read the response body
                  (when (and want-stream
                             (not (eq method :head)))
-                   (let ((content-length (gethash "content-length" response-headers)))
-                     (cond
-                       ((integerp content-length)
-                        (dotimes (i content-length)
-                          (loop until (read-byte body nil nil))))
-                       (transfer-encoding-p
-                        (read-until-crlf*2 body)))))
+                   (cond
+                     ((integerp content-length)
+                      (dotimes (i content-length)
+                        (loop until (read-byte body nil nil))))
+                     (transfer-encoding-p
+                       (read-until-crlf*2 body))))
 
                  (let ((location-uri (quri:uri (gethash "location" response-headers))))
                    (if (and (or (null (uri-host location-uri))
@@ -695,9 +797,10 @@
                     (let ((body (convert-body body
                                               (gethash "content-encoding" response-headers)
                                               (gethash "content-type" response-headers)
-                                              (gethash "content-length" response-headers)
+                                              content-length
                                               transfer-encoding-p
                                               force-binary
+                                              force-string
                                               (connection-keep-alive-p
                                                (gethash "connection" response-headers)))))
                       ;; Raise an error when the HTTP response status code is 4xx or 50x.

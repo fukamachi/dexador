@@ -84,7 +84,8 @@
                             content headers
                             basic-auth
                             cookie-jar
-                            (timeout *default-timeout*) (keep-alive t) (use-connection-pool t)
+                            (connect-timeout *default-connect-timeout*) (read-timeout *default-read-timeout*)
+                            (keep-alive t) (use-connection-pool t)
                             (max-redirects 5)
                             ssl-key-file ssl-cert-file ssl-key-password
                             stream (verbose *verbose*)
@@ -143,8 +144,8 @@
                        insecure)
               (set-ignore-certificates req))
 
-            (when timeout
-              (set-timeouts req :connect timeout :recv timeout))
+            (when connect-timeout
+              (set-timeouts req :connect connect-timeout :recv read-timeout))
 
             (send-request req content)
 
