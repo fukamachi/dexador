@@ -359,9 +359,10 @@ body: \"Within a couple weeks of learning Lisp I found programming in any other 
         '(200 (:content-type "text/plain") ("hi")))
     ;; decoding stream
     (let ((body (dex:get (localhost) :want-stream t :keep-alive nil)))
+      #-windows
       (ok (typep body 'dexador.decoding-stream:decoding-stream)
           "body is a decoding stream")
-      (ok (eq (stream-element-type body) 'babel:unicode-char)
+      (ok (subtypep (stream-element-type body) 'babel:unicode-char)
           "body is a character stream")
       (let ((buf (make-string 2)))
         (read-sequence buf body)
@@ -369,7 +370,7 @@ body: \"Within a couple weeks of learning Lisp I found programming in any other 
     ;; binary stream
     (let ((body (dex:get (localhost) :want-stream t :force-binary t :keep-alive nil)))
       (ok (typep body 'stream) "body is a stream")
-      (ok (equal (stream-element-type body) '(unsigned-byte 8))
+      (ok (subtypep (stream-element-type body) '(unsigned-byte 8))
           "body is a octets stream")
       (let ((buf (make-array 2 :element-type '(unsigned-byte 8))))
         (read-sequence buf body)
@@ -384,9 +385,10 @@ body: \"Within a couple weeks of learning Lisp I found programming in any other 
               ("[{\"name\":\"allow-statement-in-has-a\",\"commit\":{\"sha\":\"d58b3c96503786c64eb2dba22980ebb14010bdbf\",\"url\":\"https://api.github.com/repos/fukamachi/datafly/commits/d58b3c96503786c64eb2dba22980ebb14010bdbf\"}},{\"name\":\"fix-has-a\",\"commit\":{\"sha\":\"4bcea61e84402317ab49605918972983a1511e6a\",\"url\":\"https://api.github.com/repos/fukamachi/datafly/commits/4bcea61e84402317ab49605918972983a1511e6a\"}},{\"name\":\"jojo\",\"commit\":{\"sha\":\"d2b753e7fdd0dbeada9721380cf410186a85535b\",\"url\":\"https://api.github.com/repos/fukamachi/datafly/commits/d2b753e7fdd0dbeada9721380cf410186a85535b\"}},{\"name\":\"master\",\"commit\":{\"sha\":\"d2b753e7fdd0dbeada9721380cf410186a85535b\",\"url\":\"https://api.github.com/repos/fukamachi/datafly/commits/d2b753e7fdd0dbeada9721380cf410186a85535b\"}}]")))
     ;; decoding stream
     (let ((body (dex:get (localhost) :want-stream t)))
+      #-windows
       (ok (typep body 'dexador.decoding-stream:decoding-stream)
           "body is a decoding stream")
-      (ok (eq (stream-element-type body) 'babel:unicode-char)
+      (ok (subtypep (stream-element-type body) 'babel:unicode-char)
           "body is a character stream")
       (let ((buf (make-string 1024)))
         (ok (eql (read-sequence buf body) 748))))))
