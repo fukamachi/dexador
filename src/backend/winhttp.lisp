@@ -71,7 +71,7 @@
               (finish-output-stream stream))
             (format nil "multipart/form-data; boundary=~A" boundary)))
          (values
-          (quri:url-encode-params content)
+          (babel:string-to-octets (quri:url-encode-params content))
           "application/x-www-form-urlencoded")))
     (string (values (babel:string-to-octets content)
                     "text/plain"))
