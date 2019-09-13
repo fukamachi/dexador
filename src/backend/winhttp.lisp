@@ -15,6 +15,7 @@
   (:import-from #:fast-io
                 #:fast-output-stream
                 #:finish-output-stream)
+  (:import-from #:babel)
   (:import-from #:flexi-streams)
   (:import-from #:cl-cookie
                 #:cookie-jar-host-cookies
@@ -91,15 +92,15 @@
                             (max-redirects 5)
                             ssl-key-file ssl-cert-file ssl-key-password
                             stream (verbose *verbose*)
-                            force-binary
+                            force-binary force-string
                             want-stream
                             proxy
                             (insecure *not-verify-ssl*)
                             ca-path)
-  (declare (ignore version basic-auth cookie-jar use-connection-pool
+  (declare (ignore version use-connection-pool
                    ssl-key-file ssl-cert-file ssl-key-password
                    stream verbose
-                   want-stream proxy
+                   proxy
                    ca-path))
   (let ((uri (quri:uri uri))
         (content-type
@@ -206,7 +207,10 @@
 
                 (let ((body (if force-binary
                                 body
-                                (decode-body (gethash "content-type" response-headers) body))))
+                                (decode-body (gethash "content-type" response-headers) body
+                                             :default-charset (if force-string
+                                                                  babel:*default-character-encoding*
+                                                                  nil)))))
                   ;; Raise an error when the HTTP response status is 4xx or 5xx.
                   (when (<= 400 status)
                     (restart-case

@@ -25,9 +25,10 @@
            #:decompress-body))
 (in-package #:dexador.body)
 
-(defun decode-body (content-type body)
-  (let ((charset (and content-type
-                      (detect-charset content-type body)))
+(defun decode-body (content-type body &key default-charset)
+  (let ((charset (or (and content-type
+                          (detect-charset content-type body))
+                     default-charset))
         (babel-encodings:*suppress-character-coding-errors* t))
     (if charset
         (handler-case

@@ -12,7 +12,8 @@
   (:import-from :dexador.keep-alive-stream
                 :make-keep-alive-stream)
   (:import-from :dexador.body
-                :decompress-body)
+                :decompress-body
+                :decode-body)
   (:import-from :dexador.error
                 :http-request-failed
                 :http-request-not-found
@@ -219,23 +220,6 @@
                  (princ (code-char byte)))
            d))
     (boundary-line)))
-
-(defun decode-body (content-type body &key default-charset)
-  (let ((charset (or (and content-type
-                          (detect-charset content-type body))
-                     default-charset))
-        (babel-encodings:*suppress-character-coding-errors* t))
-    (if charset
-        (handler-case
-            (if (streamp body)
-                (make-decoding-stream body :encoding charset)
-                (babel:octets-to-string body :encoding charset))
-          (babel:character-decoding-error (e)
-            (warn (format nil "Failed to decode the body to ~S due to the following error (falling back to binary):~%  ~A"
-                          charset
-                          e))
-            (return-from decode-body body)))
-        body)))
 
 (defun convert-body (body content-encoding content-type content-length chunkedp force-binary force-string keep-alive-p)
   (when (and (streamp body)
