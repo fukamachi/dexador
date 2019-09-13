@@ -24,7 +24,7 @@
                "chipz"
                "cl-base64"
                "cl-reexport"
-               (:feature (:not :windows) "usocket")
+               "usocket"
                (:feature :windows "winhttp")
                (:feature :windows "flexi-streams")
                (:feature (:and (:not :windows) (:not :dexador-no-ssl)) "cl+ssl")

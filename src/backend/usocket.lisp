@@ -55,7 +55,7 @@
                 :merge-uris)
   (:import-from :cl-base64
                 :string-to-base64-string)
-  #-dexador-no-ssl
+  #-(or windows dexador-no-ssl)
   (:import-from :cl+ssl
                 :with-global-context
                 :make-context
@@ -457,9 +457,9 @@
                    (when (socks5-proxy-p proxy-uri)
                      (ensure-socks5-connected stream stream uri method))
                    (if (string= scheme "https")
-                       #+dexador-no-ssl
+                       #+(or windows dexador-no-ssl)
                        (error "SSL not supported. Remove :dexador-no-ssl from *features* to enable SSL.")
-                       #-dexador-no-ssl
+                       #-(or windows dexador-no-ssl)
                        (progn
                          (cl+ssl:ensure-initialized)
                          (let ((ctx (cl+ssl:make-context :verify-mode
