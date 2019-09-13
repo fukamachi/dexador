@@ -126,9 +126,12 @@
                                                (quri:uri-path uri)
                                                (quri:uri-query uri))
                                   :https-p (equalp (quri:uri-scheme uri) "https"))
-            (when (quri:uri-userinfo uri)
-              (destructuring-bind (user pass) (split-sequence #\: (quri:uri-userinfo uri))
-                (set-credentials req user pass)))
+            (cond
+              ((quri:uri-userinfo uri)
+               (destructuring-bind (user pass) (split-sequence #\: (quri:uri-userinfo uri))
+                 (set-credentials req user pass)))
+              (basic-auth
+               (set-credentials req (car basic-auth) (cdr basic-auth))))
 
             ;; TODO: SSL arguments
             ;; TODO: proxy support
