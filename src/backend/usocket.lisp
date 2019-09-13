@@ -11,6 +11,8 @@
                 :make-decoding-stream)
   (:import-from :dexador.keep-alive-stream
                 :make-keep-alive-stream)
+  (:import-from :dexador.body
+                :decompress-body)
   (:import-from :dexador.error
                 :http-request-failed
                 :http-request-not-found
@@ -50,10 +52,6 @@
                 :url-encode
                 :url-encode-params
                 :merge-uris)
-  (:import-from :chipz
-                :make-decompressing-stream
-                :decompress
-                :make-dstate)
   (:import-from :cl-base64
                 :string-to-base64-string)
   #-dexador-no-ssl
@@ -221,21 +219,6 @@
                  (princ (code-char byte)))
            d))
     (boundary-line)))
-
-(defun decompress-body (content-encoding body)
-  (unless content-encoding
-    (return-from decompress-body body))
-
-  (cond
-    ((string= content-encoding "gzip")
-     (if (streamp body)
-         (chipz:make-decompressing-stream :gzip body)
-         (chipz:decompress nil (chipz:make-dstate :gzip) body)))
-    ((string= content-encoding "deflate")
-     (if (streamp body)
-         (chipz:make-decompressing-stream :zlib body)
-         (chipz:decompress nil (chipz:make-dstate :zlib) body)))
-    (T body)))
 
 (defun decode-body (content-type body &key default-charset)
   (let ((charset (or (and content-type

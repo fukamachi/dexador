@@ -26,6 +26,7 @@
                "cl-reexport"
                (:feature (:not :windows) "usocket")
                (:feature :windows "winhttp")
+               (:feature :windows "flexi-streams")
                (:feature (:and (:not :windows) (:not :dexador-no-ssl)) "cl+ssl")
                "bordeaux-threads"
                "alexandria")

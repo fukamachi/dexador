@@ -16,8 +16,13 @@
                 :mime)
   (:import-from #:quri
                 #:url-encode)
+  (:import-from #:chipz
+                #:make-decompressing-stream
+                #:decompress
+                #:make-dstate)
   (:export #:decode-body
-           #:write-multipart-content))
+           #:write-multipart-content
+           #:decompress-body))
 (in-package #:dexador.body)
 
 (defun decode-body (content-type body)
@@ -84,3 +89,18 @@
                (crlf)
             finally
                (boundary-line t)))))
+
+(defun decompress-body (content-encoding body)
+  (unless content-encoding
+    (return-from decompress-body body))
+
+  (cond
+    ((string= content-encoding "gzip")
+     (if (streamp body)
+         (chipz:make-decompressing-stream :gzip body)
+         (chipz:decompress nil (chipz:make-dstate :gzip) body)))
+    ((string= content-encoding "deflate")
+     (if (streamp body)
+         (chipz:make-decompressing-stream :zlib body)
+         (chipz:decompress nil (chipz:make-dstate :zlib) body)))
+    (t body)))

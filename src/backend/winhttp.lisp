@@ -5,7 +5,8 @@
         #:winhttp)
   (:import-from #:dexador.body
                 #:decode-body
-                #:write-multipart-content)
+                #:write-multipart-content
+                #:decompress-body)
   (:import-from #:dexador.error
                 #:http-request-failed)
   (:import-from #:winhttp
@@ -14,6 +15,7 @@
   (:import-from #:fast-io
                 #:fast-output-stream
                 #:finish-output-stream)
+  (:import-from #:flexi-streams)
   (:import-from #:cl-cookie
                 #:cookie-jar-host-cookies
                 #:write-cookie-header
@@ -164,32 +166,40 @@
                                                                                   (quri:uri-host uri)
                                                                                   (quri:uri-path uri))))
                                                      set-cookies)))))
+
+              ;; Redirect
+              (when (and (member status '(301 302 303 307))
+                         (gethash "location" response-headers)
+                         (/= max-redirects 0))
+                (let ((location-uri (quri:uri (gethash "location" response-headers))))
+                  (let ((method
+                          (if (and (or (null (quri:uri-host location-uri))
+                                       (and (string= (quri:uri-scheme location-uri)
+                                                     (quri:uri-scheme uri))
+                                            (string= (quri:uri-host location-uri)
+                                                     (quri:uri-host uri))
+                                            (eql (quri:uri-port location-uri)
+                                                 (quri:uri-port uri))))
+                                   (or (= status 307)
+                                       (member method '(:get :head) :test #'eq)))
+                              method
+                              :get)))
+                    ;; TODO: slurp the body
+                    (return-from request
+                                 (apply #'request (quri:merge-uris location-uri uri)
+                                        :max-redirects (1- max-redirects)
+                                        :method method
+                                        args)))))
+
               (let* ((bytes (query-data-available req))
                      (body (make-array bytes :element-type '(unsigned-byte 8))))
                 (read-data req body)
 
-                ;; Redirect
-                (when (and (member status '(301 302 303 307))
-                           (gethash "location" response-headers)
-                           (/= max-redirects 0))
-                  (let ((location-uri (quri:uri (gethash "location" response-headers))))
-                    (let ((method
-                            (if (and (or (null (quri:uri-host location-uri))
-                                         (and (string= (quri:uri-scheme location-uri)
-                                                       (quri:uri-scheme uri))
-                                              (string= (quri:uri-host location-uri)
-                                                       (quri:uri-host uri))
-                                              (eql (quri:uri-port location-uri)
-                                                   (quri:uri-port uri))))
-                                     (or (= status 307)
-                                         (member method '(:get :head) :test #'eq)))
-                                method
-                                :get)))
-                      (return-from request
-                        (apply #'request (quri:merge-uris location-uri uri)
-                               :max-redirects (1- max-redirects)
-                               :method method
-                               args)))))
+                (when (gethash "content-encoding" response-headers)
+                  (setf body
+                        (decompress-body
+                          (gethash "content-encoding" response-headers)
+                          body)))
 
                 (let ((body (if force-binary
                                 body
@@ -208,7 +218,15 @@
                       (ignore-and-continue ()
                         :report "Ignore the error and continue.")))
 
-                  ;; TODO: want-stream support
+                  ;; TODO: This obviously isn't streaming.
+                  ;;   Wrapping 'req' object by gray streams would be better,
+                  ;;   but freeing it could be a problem for the next.
+                  (when want-stream
+                    (setf body
+                          (etypecase body
+                            (string (make-string-input-stream body))
+                            (vector (flex:make-in-memory-input-stream body)))))
+
                   (values body
                           status
                           response-headers
