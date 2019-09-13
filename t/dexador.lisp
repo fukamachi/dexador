@@ -48,6 +48,9 @@
         (ok (equal body "/foo"))))))
 
 (deftest proxy-http-tests
+  #+windows
+  (skip "Skipped proxy tests for WinHTTP backend")
+  #-windows
   (testing-app "proxy (http) case"
       ; proxy behavior is same as direct connection if http
       (lambda (env)
@@ -221,6 +224,12 @@
                        #\Return #\Newline))
         "string value")))
 
+;; SBCL replaces LF with CRLF when reading from a stream on Windows
+(defun replace-crlf-to-lf (string)
+  (ppcre:regex-replace-all (format nil "~C~C" #\Return #\Newline)
+                           string
+                           (format nil "~C" #\Newline)))
+
 (deftest post-request-tests
   (testing-app "POST request"
       (lambda (env)
@@ -230,7 +239,7 @@
                                   :element-type '(unsigned-byte 8))))
              (read-sequence buf (getf env :raw-body))
              `(200 ()
-                   (,(babel:octets-to-string buf)))))
+                   (,(replace-crlf-to-lf (babel:octets-to-string buf))))))
           (t
            (let ((req (lack.request:make-request env)))
              `(200 ()
@@ -243,7 +252,7 @@
                                                 (streamp (car v)))
                                            (let* ((buf (make-array 1024 :element-type '(unsigned-byte 8)))
                                                   (n (read-sequence buf (car v))))
-                                             (babel:octets-to-string (subseq buf 0 n))))
+                                             (replace-crlf-to-lf (babel:octets-to-string (subseq buf 0 n)))))
                                           ((consp v)
                                            (car v))
                                           (t v)))))))))))
@@ -359,6 +368,8 @@ body: \"Within a couple weeks of learning Lisp I found programming in any other 
         '(200 (:content-type "text/plain") ("hi")))
     ;; decoding stream
     (let ((body (dex:get (localhost) :want-stream t :keep-alive nil)))
+      #+windows
+      (ok (typep body 'stream))
       #-windows
       (ok (typep body 'dexador.decoding-stream:decoding-stream)
           "body is a decoding stream")
@@ -385,6 +396,8 @@ body: \"Within a couple weeks of learning Lisp I found programming in any other 
               ("[{\"name\":\"allow-statement-in-has-a\",\"commit\":{\"sha\":\"d58b3c96503786c64eb2dba22980ebb14010bdbf\",\"url\":\"https://api.github.com/repos/fukamachi/datafly/commits/d58b3c96503786c64eb2dba22980ebb14010bdbf\"}},{\"name\":\"fix-has-a\",\"commit\":{\"sha\":\"4bcea61e84402317ab49605918972983a1511e6a\",\"url\":\"https://api.github.com/repos/fukamachi/datafly/commits/4bcea61e84402317ab49605918972983a1511e6a\"}},{\"name\":\"jojo\",\"commit\":{\"sha\":\"d2b753e7fdd0dbeada9721380cf410186a85535b\",\"url\":\"https://api.github.com/repos/fukamachi/datafly/commits/d2b753e7fdd0dbeada9721380cf410186a85535b\"}},{\"name\":\"master\",\"commit\":{\"sha\":\"d2b753e7fdd0dbeada9721380cf410186a85535b\",\"url\":\"https://api.github.com/repos/fukamachi/datafly/commits/d2b753e7fdd0dbeada9721380cf410186a85535b\"}}]")))
     ;; decoding stream
     (let ((body (dex:get (localhost) :want-stream t)))
+      #+windows
+      (ok (typep body 'stream))
       #-windows
       (ok (typep body 'dexador.decoding-stream:decoding-stream)
           "body is a decoding stream")
@@ -450,7 +463,8 @@ body: \"Within a couple weeks of learning Lisp I found programming in any other 
         (declare (ignore env))
         '(200 () ("hi")))
     (let ((headers (nth-value 2 (dex:get (localhost)))))
-      (ok (null (gethash "connection" headers))))
+      (ok (or (null (gethash "connection" headers))
+              (string-equal (gethash "connection" headers) "keep-alive"))))
     (let ((headers (nth-value 2 (dex:get (localhost) :keep-alive nil))))
       (ok (equalp (gethash "connection" headers) "close")))))
 
