@@ -14,6 +14,7 @@ This software is still BETA quality. The APIs will be likely to change.
 * Fast, particularly when requesting to the same host (See [Benchmark](#benchmark))
 * Neat APIs
 * Signal a condition when HTTP request failed
+* OpenSSL isn't required for Windows
 
 See also [a presentation given at Lisp Meetup #31](http://www.slideshare.net/fukamachi/dexador-rises).
 
