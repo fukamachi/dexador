@@ -226,6 +226,12 @@
                        #\Return #\Newline))
         "string value")))
 
+;; SBCL replaces LF with CRLF when reading from a stream on Windows
+(defun replace-crlf-to-lf (string)
+  (ppcre:regex-replace-all (format nil "~C~C" #\Return #\Newline)
+                           string
+                           (format nil "~C" #\Newline)))
+
 (deftest post-request-tests
   (testing-app "POST request"
       (lambda (env)
@@ -235,7 +241,7 @@
                                   :element-type '(unsigned-byte 8))))
              (read-sequence buf (getf env :raw-body))
              `(200 ()
-                   (,(babel:octets-to-string buf)))))
+                   (,(replace-crlf-to-lf (babel:octets-to-string buf))))))
           (t
            (let ((req (lack.request:make-request env)))
              `(200 ()
@@ -248,7 +254,7 @@
                                                 (streamp (car v)))
                                            (let* ((buf (make-array 1024 :element-type '(unsigned-byte 8)))
                                                   (n (read-sequence buf (car v))))
-                                             (babel:octets-to-string (subseq buf 0 n))))
+                                             (replace-crlf-to-lf (babel:octets-to-string (subseq buf 0 n)))))
                                           ((consp v)
                                            (car v))
                                           (t v)))))))))))
