@@ -49,6 +49,9 @@
         (ok (equal body "/foo"))))))
 
 (deftest proxy-http-tests
+  #+windows
+  (skip "Skipped proxy tests on Windows")
+  #-windows
   (testing-app "proxy (http) case"
       ; proxy behavior is same as direct connection if http
       (lambda (env)
