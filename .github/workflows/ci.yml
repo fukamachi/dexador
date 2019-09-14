@@ -9,14 +9,13 @@ jobs:
     strategy:
       matrix:
         lisp: [sbcl-bin]
-        os: [ubuntu-latest, macOS-latest, windows-latest]
+        os: [ubuntu-latest, macOS-latest]
 
     steps:
       - uses: actions/checkout@v1
       - name: Install Roswell
         env:
           LISP: ${{ matrix.lisp }}
-          ROSWELL_INSTALL_DIR: /usr
         run: |
           curl -L https://raw.githubusercontent.com/roswell/roswell/master/scripts/install-for-ci.sh | sh
       - name: Install Rove
@@ -25,12 +24,7 @@ jobs:
         run: |
           ros install fukamachi/clack
           ros install fukamachi/fast-http
-      - name: Run tests (Linux, Mac)
+      - name: Run tests
         run: |
           PATH="~/.roswell/bin:$PATH"
           rove dexador-test.asd
-        if: matrix.os != 'windows-latest'
-      - name: Run tests (Windows)
-        run: |
-          ros %userprofile%\.roswell\bin\rove dexador-test.asd
-        if: matrix.os == 'windows-latest'
