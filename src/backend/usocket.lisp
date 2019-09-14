@@ -542,7 +542,7 @@
                               (null (cdr content-length)))))
            (first-line-data
              (with-fast-output (buffer)
-               (write-first-line method uri proxy version buffer)))
+               (write-first-line method uri version buffer)))
            (headers-data
              (flet ((write-header* (name value)
                       (let ((header (assoc name headers :test #'string-equal)))
@@ -734,7 +734,7 @@
                          (setq uri (merge-uris location-uri uri))
                          (setq first-line-data
                                (with-fast-output (buffer)
-                                 (write-first-line method uri proxy version buffer)))
+                                 (write-first-line method uri version buffer)))
                          (when cookie-jar
                            ;; Rebuild cookie-headers.
                            (setq cookie-headers (build-cookie-headers uri cookie-jar)))

@@ -4,6 +4,7 @@
         :rove)
   (:import-from :clack.test
                 :*clack-test-port*
+                :*clack-test-access-port*
                 :port-available-p
                 :localhost))
 (in-package :dexador-test)
@@ -48,40 +49,38 @@
         (ok (equal body "/foo"))))))
 
 (deftest proxy-http-tests
-  #+windows
-  (skip "Skipped proxy tests for WinHTTP backend")
-  #-windows
   (testing-app "proxy (http) case"
       ; proxy behavior is same as direct connection if http
       (lambda (env)
-        `(200 (:content-length ,(length (getf env :request-uri))) (,(getf env :request-uri))))
+        (let ((body (format nil "~A~%~A"
+                            (gethash "host" (getf env :headers))
+                            (getf env :request-uri))))
+          `(200 (:content-length ,(length body)) (,body))))
     (testing "GET"
-      (multiple-value-bind (body code headers)
-          (dex:get (localhost "/foo")
+      (multiple-value-bind (body code)
+          (dex:get "http://lisp.org/foo"
                    :headers '((:x-foo . "ppp"))
                    :proxy (localhost))
         (ok (eql code 200))
-        (ok (equal body (localhost "/foo")))
-        (ok (equal (gethash "content-length" headers)
-                   (princ-to-string (length (localhost "/foo")))))))
+        (ok (equal body (format nil "lisp.org~%/foo")))))
     (testing "HEAD"
       (multiple-value-bind (body code)
-          (dex:head (localhost "/foo")
+          (dex:head "http://lisp.org/foo"
                     :proxy (localhost))
         (ok (eql code 200))
         (ok (equal body ""))))
     (testing "PUT"
       (multiple-value-bind (body code)
-          (dex:put (localhost "/foo")
+          (dex:put "http://lisp.org/foo"
                    :proxy (localhost))
         (ok (eql code 200))
-        (ok (equal body (localhost "/foo")))))
+        (ok (equal body (format nil "lisp.org~%/foo")))))
     (testing "DELETE"
       (multiple-value-bind (body code)
-          (dex:delete (localhost "/foo")
+          (dex:delete "http://lisp.org/foo"
                       :proxy (localhost))
         (ok (eql code 200))
-        (ok (equal body (localhost "/foo")))))))
+        (ok (equal body (format nil "lisp.org~%/foo")))))))
 
 (deftest proxy-socks5-tests
   #+windows
