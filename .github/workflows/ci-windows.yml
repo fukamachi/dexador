@@ -21,7 +21,7 @@ jobs:
           /c/roswell/ros setup
       - name: Install Rove
         shell: bash
-        run: /c/roswell/ros install fukamachi/rove/fix/resolve-file-device
+        run: /c/roswell/ros install fukamachi/rove
       - name: Install dependencies
         shell: bash
         run: |
@@ -31,4 +31,5 @@ jobs:
       - name: Run tests
         shell: bash
         run: |
-          /c/roswell/ros -S . -s rove -e '(or (rove:run :dexador-test) (uiop:quit -1))'
+          PATH="~/.roswell/bin:$PATH"
+          /c/roswell/ros -S . rove dexador-test.asd
