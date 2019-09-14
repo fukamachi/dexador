@@ -14,6 +14,8 @@
                 #:set-timeouts)
   (:import-from #:fast-io
                 #:fast-output-stream
+                #:with-fast-output
+                #:fast-write-sequence
                 #:finish-output-stream)
   (:import-from #:babel)
   (:import-from #:flexi-streams)
@@ -195,10 +197,11 @@
                                         :method method
                                         args)))))
 
-              (let* ((bytes (query-data-available req))
-                     (body (make-array bytes :element-type '(unsigned-byte 8))))
-                (read-data req body)
-
+              (let ((body (with-fast-output (body :vector)
+                            (loop with buffer = (make-array 1024 :element-type '(unsigned-byte 8))
+                                  for bytes = (read-data req buffer)
+                                  until (zerop bytes)
+                                  do (fast-write-sequence buffer body 0 bytes)))))
                 (when (gethash "content-encoding" response-headers)
                   (setf body
                         (decompress-body
