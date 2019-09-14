@@ -11,6 +11,9 @@
                 :make-decoding-stream)
   (:import-from :dexador.keep-alive-stream
                 :make-keep-alive-stream)
+  (:import-from :dexador.body
+                :decompress-body
+                :decode-body)
   (:import-from :dexador.error
                 :http-request-failed
                 :http-request-not-found
@@ -50,13 +53,9 @@
                 :url-encode
                 :url-encode-params
                 :merge-uris)
-  (:import-from :chipz
-                :make-decompressing-stream
-                :decompress
-                :make-dstate)
   (:import-from :cl-base64
                 :string-to-base64-string)
-  #-dexador-no-ssl
+  #-(or windows dexador-no-ssl)
   (:import-from :cl+ssl
                 :with-global-context
                 :make-context
@@ -221,38 +220,6 @@
                  (princ (code-char byte)))
            d))
     (boundary-line)))
-
-(defun decompress-body (content-encoding body)
-  (unless content-encoding
-    (return-from decompress-body body))
-
-  (cond
-    ((string= content-encoding "gzip")
-     (if (streamp body)
-         (chipz:make-decompressing-stream :gzip body)
-         (chipz:decompress nil (chipz:make-dstate :gzip) body)))
-    ((string= content-encoding "deflate")
-     (if (streamp body)
-         (chipz:make-decompressing-stream :zlib body)
-         (chipz:decompress nil (chipz:make-dstate :zlib) body)))
-    (T body)))
-
-(defun decode-body (content-type body &key default-charset)
-  (let ((charset (or (and content-type
-                          (detect-charset content-type body))
-                     default-charset))
-        (babel-encodings:*suppress-character-coding-errors* t))
-    (if charset
-        (handler-case
-            (if (streamp body)
-                (make-decoding-stream body :encoding charset)
-                (babel:octets-to-string body :encoding charset))
-          (babel:character-decoding-error (e)
-            (warn (format nil "Failed to decode the body to ~S due to the following error (falling back to binary):~%  ~A"
-                          charset
-                          e))
-            (return-from decode-body body)))
-        body)))
 
 (defun convert-body (body content-encoding content-type content-length chunkedp force-binary force-string keep-alive-p)
   (when (and (streamp body)
@@ -490,9 +457,9 @@
                    (when (socks5-proxy-p proxy-uri)
                      (ensure-socks5-connected stream stream uri method))
                    (if (string= scheme "https")
-                       #+dexador-no-ssl
+                       #+(or windows dexador-no-ssl)
                        (error "SSL not supported. Remove :dexador-no-ssl from *features* to enable SSL.")
-                       #-dexador-no-ssl
+                       #-(or windows dexador-no-ssl)
                        (progn
                          (cl+ssl:ensure-initialized)
                          (let ((ctx (cl+ssl:make-context :verify-mode
@@ -575,7 +542,7 @@
                               (null (cdr content-length)))))
            (first-line-data
              (with-fast-output (buffer)
-               (write-first-line method uri proxy version buffer)))
+               (write-first-line method uri version buffer)))
            (headers-data
              (flet ((write-header* (name value)
                       (let ((header (assoc name headers :test #'string-equal)))
@@ -767,7 +734,7 @@
                          (setq uri (merge-uris location-uri uri))
                          (setq first-line-data
                                (with-fast-output (buffer)
-                                 (write-first-line method uri proxy version buffer)))
+                                 (write-first-line method uri version buffer)))
                          (when cookie-jar
                            ;; Rebuild cookie-headers.
                            (setq cookie-headers (build-cookie-headers uri cookie-jar)))

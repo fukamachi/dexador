@@ -4,6 +4,7 @@
         :rove)
   (:import-from :clack.test
                 :*clack-test-port*
+                :*clack-test-access-port*
                 :port-available-p
                 :localhost))
 (in-package :dexador-test)
@@ -48,39 +49,46 @@
         (ok (equal body "/foo"))))))
 
 (deftest proxy-http-tests
+  #+windows
+  (skip "Skipped proxy tests on Windows")
+  #-windows
   (testing-app "proxy (http) case"
       ; proxy behavior is same as direct connection if http
       (lambda (env)
-        `(200 (:content-length ,(length (getf env :request-uri))) (,(getf env :request-uri))))
+        (let ((body (format nil "~A~%~A"
+                            (gethash "host" (getf env :headers))
+                            (getf env :request-uri))))
+          `(200 (:content-length ,(length body)) (,body))))
     (testing "GET"
-      (multiple-value-bind (body code headers)
-          (dex:get (localhost "/foo")
+      (multiple-value-bind (body code)
+          (dex:get "http://lisp.org/foo"
                    :headers '((:x-foo . "ppp"))
                    :proxy (localhost))
         (ok (eql code 200))
-        (ok (equal body (localhost "/foo")))
-        (ok (equal (gethash "content-length" headers)
-                   (princ-to-string (length (localhost "/foo")))))))
+        (ok (equal body (format nil "lisp.org~%/foo")))))
     (testing "HEAD"
       (multiple-value-bind (body code)
-          (dex:head (localhost "/foo")
+          (dex:head "http://lisp.org/foo"
                     :proxy (localhost))
         (ok (eql code 200))
         (ok (equal body ""))))
     (testing "PUT"
       (multiple-value-bind (body code)
-          (dex:put (localhost "/foo")
+          (dex:put "http://lisp.org/foo"
                    :proxy (localhost))
         (ok (eql code 200))
-        (ok (equal body (localhost "/foo")))))
+        (ok (equal body (format nil "lisp.org~%/foo")))))
     (testing "DELETE"
       (multiple-value-bind (body code)
-          (dex:delete (localhost "/foo")
+          (dex:delete "http://lisp.org/foo"
                       :proxy (localhost))
         (ok (eql code 200))
-        (ok (equal body (localhost "/foo")))))))
+        (ok (equal body (format nil "lisp.org~%/foo")))))))
 
 (deftest proxy-socks5-tests
+  #+windows
+  (skip "SOCKS5 proxy tests are skipped")
+  #-windows
   (testing-app "proxy (socks5) case"
       (flet ((check (uri in out)
                (flexi-streams:with-input-from-sequence (in in)
@@ -194,6 +202,9 @@
         (ok (equal (quri:uri-path uri) "/200"))))))
 
 (deftest content-disposition-tests
+  #+windows
+  (skip "Content-Disposition tests are skipped")
+  #-windows
   (testing "content-disposition"
     (ok (equal (dexador.backend.usocket::content-disposition "upload" #P"data/plain-file.txt")
                (format nil "Content-Disposition: form-data; name=\"upload\"; filename=\"plain-file.txt\"~C~C"
@@ -215,6 +226,12 @@
                        #\Return #\Newline))
         "string value")))
 
+;; SBCL replaces LF with CRLF when reading from a stream on Windows
+(defun replace-crlf-to-lf (string)
+  (ppcre:regex-replace-all (format nil "~C~C" #\Return #\Newline)
+                           string
+                           (format nil "~C" #\Newline)))
+
 (deftest post-request-tests
   (testing-app "POST request"
       (lambda (env)
@@ -224,7 +241,7 @@
                                   :element-type '(unsigned-byte 8))))
              (read-sequence buf (getf env :raw-body))
              `(200 ()
-                   (,(babel:octets-to-string buf)))))
+                   (,(replace-crlf-to-lf (babel:octets-to-string buf))))))
           (t
            (let ((req (lack.request:make-request env)))
              `(200 ()
@@ -237,7 +254,7 @@
                                                 (streamp (car v)))
                                            (let* ((buf (make-array 1024 :element-type '(unsigned-byte 8)))
                                                   (n (read-sequence buf (car v))))
-                                             (babel:octets-to-string (subseq buf 0 n))))
+                                             (replace-crlf-to-lf (babel:octets-to-string (subseq buf 0 n)))))
                                           ((consp v)
                                            (car v))
                                           (t v)))))))))))
@@ -248,9 +265,7 @@
                                ("email" . "e.arrows@gmail.com")))
         (declare (ignore headers))
         (ok (eql code 200))
-        (ok (equal body "name: Eitaro
-email: e.arrows@gmail.com
-"))))
+        (ok (equal body (format nil "name: Eitaro~%email: e.arrows@gmail.com~%")))))
     (testing "string content"
       (multiple-value-bind (body code headers)
           (dex:post (localhost "/upload")
@@ -272,17 +287,14 @@ email: e.arrows@gmail.com
                                ("body" . ,(asdf:system-relative-pathname :dexador #P"t/data/quote.txt"))))
         (ok (eql code 200))
         (ok (equal body
-                   "title: Road to Lisp
-body: \"Within a couple weeks of learning Lisp I found programming in any other language unbearably constraining.\" -- Paul Graham, Road to Lisp
-
-"))))
+                   (format nil "title: Road to Lisp~%body: \"Within a couple weeks of learning Lisp I found programming in any other language unbearably constraining.\" -- Paul Graham, Road to Lisp~2%")))))
     (testing "upload"
       (multiple-value-bind (body code)
           (dex:post (localhost "/upload")
                     :content (asdf:system-relative-pathname :dexador #P"t/data/quote.txt"))
         (ok (eql code 200))
-        (ok (equal body "\"Within a couple weeks of learning Lisp I found programming in any other language unbearably constraining.\" -- Paul Graham, Road to Lisp
-"))))))
+        (ok (equal body
+                   (format nil "\"Within a couple weeks of learning Lisp I found programming in any other language unbearably constraining.\" -- Paul Graham, Road to Lisp~%")))))))
 
 (deftest http-request-failed-tests
   (testing-app "HTTP request failed"
@@ -353,9 +365,12 @@ body: \"Within a couple weeks of learning Lisp I found programming in any other 
         '(200 (:content-type "text/plain") ("hi")))
     ;; decoding stream
     (let ((body (dex:get (localhost) :want-stream t :keep-alive nil)))
+      #+windows
+      (ok (typep body 'stream))
+      #-windows
       (ok (typep body 'dexador.decoding-stream:decoding-stream)
           "body is a decoding stream")
-      (ok (eq (stream-element-type body) 'babel:unicode-char)
+      (ok (subtypep (stream-element-type body) 'babel:unicode-char)
           "body is a character stream")
       (let ((buf (make-string 2)))
         (read-sequence buf body)
@@ -363,7 +378,7 @@ body: \"Within a couple weeks of learning Lisp I found programming in any other 
     ;; binary stream
     (let ((body (dex:get (localhost) :want-stream t :force-binary t :keep-alive nil)))
       (ok (typep body 'stream) "body is a stream")
-      (ok (equal (stream-element-type body) '(unsigned-byte 8))
+      (ok (subtypep (stream-element-type body) '(unsigned-byte 8))
           "body is a octets stream")
       (let ((buf (make-array 2 :element-type '(unsigned-byte 8))))
         (read-sequence buf body)
@@ -378,9 +393,12 @@ body: \"Within a couple weeks of learning Lisp I found programming in any other 
               ("[{\"name\":\"allow-statement-in-has-a\",\"commit\":{\"sha\":\"d58b3c96503786c64eb2dba22980ebb14010bdbf\",\"url\":\"https://api.github.com/repos/fukamachi/datafly/commits/d58b3c96503786c64eb2dba22980ebb14010bdbf\"}},{\"name\":\"fix-has-a\",\"commit\":{\"sha\":\"4bcea61e84402317ab49605918972983a1511e6a\",\"url\":\"https://api.github.com/repos/fukamachi/datafly/commits/4bcea61e84402317ab49605918972983a1511e6a\"}},{\"name\":\"jojo\",\"commit\":{\"sha\":\"d2b753e7fdd0dbeada9721380cf410186a85535b\",\"url\":\"https://api.github.com/repos/fukamachi/datafly/commits/d2b753e7fdd0dbeada9721380cf410186a85535b\"}},{\"name\":\"master\",\"commit\":{\"sha\":\"d2b753e7fdd0dbeada9721380cf410186a85535b\",\"url\":\"https://api.github.com/repos/fukamachi/datafly/commits/d2b753e7fdd0dbeada9721380cf410186a85535b\"}}]")))
     ;; decoding stream
     (let ((body (dex:get (localhost) :want-stream t)))
+      #+windows
+      (ok (typep body 'stream))
+      #-windows
       (ok (typep body 'dexador.decoding-stream:decoding-stream)
           "body is a decoding stream")
-      (ok (eq (stream-element-type body) 'babel:unicode-char)
+      (ok (subtypep (stream-element-type body) 'babel:unicode-char)
           "body is a character stream")
       (let ((buf (make-string 1024)))
         (ok (eql (read-sequence buf body) 748))))))
@@ -442,7 +460,8 @@ body: \"Within a couple weeks of learning Lisp I found programming in any other 
         (declare (ignore env))
         '(200 () ("hi")))
     (let ((headers (nth-value 2 (dex:get (localhost)))))
-      (ok (null (gethash "connection" headers))))
+      (ok (or (null (gethash "connection" headers))
+              (string-equal (gethash "connection" headers) "keep-alive"))))
     (let ((headers (nth-value 2 (dex:get (localhost) :keep-alive nil))))
       (ok (equalp (gethash "connection" headers) "close")))))
 

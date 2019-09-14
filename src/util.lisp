@@ -90,15 +90,13 @@
 
 (defparameter *header-buffer* nil)
 
-(defun write-first-line (method uri proxy version &optional (buffer *header-buffer*))
+(defun write-first-line (method uri version &optional (buffer *header-buffer*))
   (fast-write-sequence (ascii-string-to-octets (string method)) buffer)
   (fast-write-byte #.(char-code #\Space) buffer)
   (fast-write-sequence (ascii-string-to-octets
-                         (if proxy
-                           (render-uri uri)
-                           (format nil "~A~:[~;~:*?~A~]"
-                                   (or (uri-path uri) "/")
-                                   (uri-query uri))))
+                         (format nil "~A~:[~;~:*?~A~]"
+                                 (or (uri-path uri) "/")
+                                 (uri-query uri)))
                        buffer)
   (fast-write-byte #.(char-code #\Space) buffer)
   (fast-write-sequence (ecase version
