@@ -259,9 +259,7 @@
                                ("email" . "e.arrows@gmail.com")))
         (declare (ignore headers))
         (ok (eql code 200))
-        (ok (equal body "name: Eitaro
-email: e.arrows@gmail.com
-"))))
+        (ok (equal body (format nil "name: Eitaro~%email: e.arrows@gmail.com~%")))))
     (testing "string content"
       (multiple-value-bind (body code headers)
           (dex:post (localhost "/upload")
@@ -283,17 +281,14 @@ email: e.arrows@gmail.com
                                ("body" . ,(asdf:system-relative-pathname :dexador #P"t/data/quote.txt"))))
         (ok (eql code 200))
         (ok (equal body
-                   "title: Road to Lisp
-body: \"Within a couple weeks of learning Lisp I found programming in any other language unbearably constraining.\" -- Paul Graham, Road to Lisp
-
-"))))
+                   (format nil "title: Road to Lisp~%body: \"Within a couple weeks of learning Lisp I found programming in any other language unbearably constraining.\" -- Paul Graham, Road to Lisp~2%")))))
     (testing "upload"
       (multiple-value-bind (body code)
           (dex:post (localhost "/upload")
                     :content (asdf:system-relative-pathname :dexador #P"t/data/quote.txt"))
         (ok (eql code 200))
-        (ok (equal body "\"Within a couple weeks of learning Lisp I found programming in any other language unbearably constraining.\" -- Paul Graham, Road to Lisp
-"))))))
+        (ok (equal body
+                   (format nil "\"Within a couple weeks of learning Lisp I found programming in any other language unbearably constraining.\" -- Paul Graham, Road to Lisp~%")))))))
 
 (deftest http-request-failed-tests
   (testing-app "HTTP request failed"
