@@ -20,23 +20,25 @@ jobs:
     steps:
       - uses: actions/checkout@v1
       - name: Install Roswell
+        env:
+          LISP: ${{ matrix.lisp }}
+          ROSWELL_INSTALL_DIR: /c/roswell
         shell: bash
         run: |
-          curl -L https://github.com/roswell/roswell/releases/download/v19.08.10.101/roswell_19.08.10.101_i686.zip -o roswell.zip
-          unzip roswell.zip -d /c/
-          /c/roswell/ros setup
+          PATH="/c/roswell/bin:$PATH"
+          curl -L https://raw.githubusercontent.com/fukamachi/roswell/windows-source-registry-settings/scripts/install-for-ci.sh | sh
       - name: Install Ultralisp
         shell: bash
-        run: /c/roswell/ros -e '(ql-dist:install-dist "http://dist.ultralisp.org/" :prompt nil)'
+        run: /c/roswell/bin/ros -e '(ql-dist:install-dist "http://dist.ultralisp.org/" :prompt nil)'
       - name: Install Rove
         shell: bash
-        run: /c/roswell/ros install fukamachi/rove
+        run: /c/roswell/bin/ros install fukamachi/rove
       - name: Install dependencies
         shell: bash
         run: |
-          /c/roswell/ros install fukamachi/cl-cookie
+          /c/roswell/bin/ros install fukamachi/cl-cookie
       - name: Run tests
         shell: bash
         run: |
-          PATH="~/.roswell/bin:$PATH"
-          /c/roswell/ros -S . rove dexador-test.asd
+          PATH="~/.roswell/bin:/c/roswell/bin:$PATH"
+          rove dexador-test.asd
