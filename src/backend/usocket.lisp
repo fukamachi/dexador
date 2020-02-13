@@ -439,7 +439,7 @@
                             (proxy-uri (and proxy (quri:uri proxy))))
   (declare (ignorable ssl-key-file ssl-cert-file ssl-key-password
                       connect-timeout ca-path)
-           (type single-float version)
+           (type real version)
            (type fixnum max-redirects))
   (labels ((make-new-connection (uri)
              (restart-case
@@ -499,7 +499,7 @@
                          (string= scheme "socks5")))))
            (connection-keep-alive-p (connection-header)
              (and keep-alive
-                  (or (and (= (the single-float version) 1.0)
+                  (or (and (= (the real version) 1.0)
                            (equalp connection-header "keep-alive"))
                       (not (equalp connection-header "close")))))
            (finalize-connection (stream connection-header uri)
@@ -557,10 +557,10 @@
                  (write-header* :accept "*/*")
                  (cond
                    ((and keep-alive
-                         (= (the single-float version) 1.0))
+                         (= (the real version) 1.0))
                     (write-header* :connection "keep-alive"))
                    ((and (not keep-alive)
-                         (= (the single-float version) 1.1))
+                         (= (the real version) 1.1))
                     (write-header* :connection "close")))
                  (when basic-auth
                    (write-header* :authorization
