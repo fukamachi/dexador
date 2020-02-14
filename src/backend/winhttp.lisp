@@ -108,7 +108,7 @@
         (content-type
           (find :content-type headers :key #'car :test #'string-equal))
         (user-agent
-          (find :user-agent headers :key #'car :test #'string-equal)))
+          (cdr (find :user-agent headers :key #'car :test #'string-equal))))
     (multiple-value-bind (content detected-content-type) (convert-content content)
       (when (and (null content-type)
                  detected-content-type)
