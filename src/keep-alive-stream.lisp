@@ -34,6 +34,16 @@
       (make-instance 'keep-alive-chunked-stream :stream stream)
       (make-instance 'keep-alive-stream :stream stream :end end)))
 
+(defmethod stream-read-byte ((stream keep-alive-stream))
+  (block nil
+    (when (<= (keep-alive-stream-end stream) 0)
+      (return :eof))
+    (let ((byte (read-byte (keep-alive-stream-stream stream) nil nil)))
+      (decf (keep-alive-stream-end stream) 1)
+      (unless byte 
+        (return :eof))      
+      (return byte))))
+
 (defmethod stream-read-byte ((stream keep-alive-chunked-stream))
   (block nil
     (when (= (slot-value stream 'state) 3)
