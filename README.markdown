@@ -222,8 +222,10 @@ All functions take similar arguments.
   - Username and password for basic authorization. This is a cons having username at car and password at cdr. (e.g. `'("foo" . "bar")`)
 - `cookie-jar` (cookie-jar of [cl-cookie](https://github.com/fukamachi/cl-cookie))
   - A cookie jar object.
-- `timeout` (fixnum)
-  - The seconds to timeout of the HTTP connection. The default is `10`, the value of `*default-timeout*`.
+- `connect-timeout` (fixnum)
+  - The seconds to timeout until the HTTP connection established. The default is `10`, the value of `*default-connect-timeout*`.
+- `read-timeout` (fixnum)
+  - The seconds to timeout until the whole HTTP body read. The default is `10`, the value of `*default-read-timeout*`.
 - `keep-alive` (boolean)
   - A flag if the connection keep connected even after the HTTP request. The default is `NIL`.
 - `use-connection-pool` (boolean)
@@ -246,7 +248,7 @@ All functions take similar arguments.
 ### \[Function\] request
 
 ```common-lisp
-(dex:request uri &key method version content headers basic-auth cookie-jar timeout
+(dex:request uri &key method version content headers basic-auth cookie-jar connect-timeout read-timeout
                    (keep-alive t) (use-connection-pool t) (max-redirects 5)
                    ssl-key-file ssl-cert-file ssl-key-password
                    stream verbose force-binary want-stream proxy)
@@ -274,7 +276,7 @@ This function signals `http-request-failed` when the HTTP status code is 4xx or 
 ### \[Function\] get
 
 ```common-lisp
-(dex:get uri &key version headers basic-auth cookie-jar keep-alive timeout max-redirects force-binary want-stream
+(dex:get uri &key version headers basic-auth cookie-jar keep-alive connect-timeout read-timeout max-redirects force-binary want-stream
                ssl-key-file ssl-cert-file ssl-key-password
                stream verbose proxy)
 ```
@@ -282,7 +284,7 @@ This function signals `http-request-failed` when the HTTP status code is 4xx or 
 ### \[Function\] post
 
 ```common-lisp
-(dex:post uri &key version headers content cookie-jar keep-alive timeout force-binary want-stream
+(dex:post uri &key version headers content cookie-jar keep-alive connect-timeout read-timeout force-binary want-stream
                 ssl-key-file ssl-cert-file ssl-key-password
                 stream verbose proxy)
 ```
@@ -290,7 +292,7 @@ This function signals `http-request-failed` when the HTTP status code is 4xx or 
 ### \[Function\] head
 
 ```common-lisp
-(dex:head uri &key version headers cookie-jar timeout max-redirects
+(dex:head uri &key version headers cookie-jar connect-timeout read-timeout max-redirects
                 ssl-key-file ssl-cert-file ssl-key-password
                 stream verbose proxy)
 ```
@@ -298,7 +300,7 @@ This function signals `http-request-failed` when the HTTP status code is 4xx or 
 ### \[Function\] put
 
 ```common-lisp
-(dex:put uri &key version headers content cookie-jar keep-alive timeout force-binary want-stream
+(dex:put uri &key version headers content cookie-jar keep-alive connect-timeout read-timeout force-binary want-stream
                ssl-key-file ssl-cert-file ssl-key-password
                stream verbose proxy)
 ```
@@ -306,7 +308,7 @@ This function signals `http-request-failed` when the HTTP status code is 4xx or 
 ### \[Function\] patch
 
 ```common-lisp
-(dex:patch uri &key version headers content cookie-jar keep-alive timeout force-binary want-stream
+(dex:patch uri &key version headers content cookie-jar keep-alive connect-timeout read-timeout force-binary want-stream
                  ssl-key-file ssl-cert-file ssl-key-password
                  stream verbose proxy)
 ```
@@ -314,7 +316,7 @@ This function signals `http-request-failed` when the HTTP status code is 4xx or 
 ### \[Function\] delete
 
 ```common-lisp
-(dex:delete uri &key version headers cookie-jar keep-alive timeout force-binary want-stream
+(dex:delete uri &key version headers cookie-jar keep-alive connect-timeout read-timeout force-binary want-stream
                   ssl-key-file ssl-cert-file ssl-key-password
                   stream verbose proxy)
 ```
