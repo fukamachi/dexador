@@ -153,7 +153,9 @@
               (set-ignore-certificates req))
 
             (when connect-timeout
-              (set-timeouts req :connect connect-timeout :recv read-timeout))
+              (set-timeouts req
+                            :connect (* 1000 connect-timeout)
+                            :recv (* 1000 read-timeout)))
 
             (send-request req content)
 
