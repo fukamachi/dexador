@@ -65,6 +65,7 @@
   (:import-from :alexandria
                 :copy-stream
                 :if-let
+                :remove-from-plist
                 :when-let
                 :ensure-list)
   (:import-from :uiop)
@@ -505,9 +506,10 @@
            (finalize-connection (stream connection-header uri)
              (if (or want-stream
                      (connection-keep-alive-p connection-header))
-                 (push-connection (format nil "~A://~A"
-                                          (uri-scheme uri)
-                                          (uri-authority uri)) stream)
+                 (when use-connection-pool
+                   (push-connection (format nil "~A://~A"
+                                            (uri-scheme uri)
+                                            (uri-authority uri)) stream))
                  (ignore-errors (close stream)))))
     (let* ((uri (quri:uri uri))
            (proxy (when (http-proxy-p proxy-uri) proxy))
@@ -720,14 +722,15 @@
                      (transfer-encoding-p
                        (read-until-crlf*2 body))))
 
-                 (let ((location-uri (quri:uri (gethash "location" response-headers))))
-                   (if (and (or (null (uri-host location-uri))
-                                (and (string= (uri-scheme location-uri)
-                                              (uri-scheme uri))
-                                     (string= (uri-host location-uri)
-                                              (uri-host uri))
-                                     (eql (uri-port location-uri)
-                                          (uri-port uri))))
+                 (let* ((location-uri (quri:uri (gethash "location" response-headers)))
+                        (same-server-p (or (null (uri-host location-uri))
+                                           (and (string= (uri-scheme location-uri)
+                                                         (uri-scheme uri))
+                                                (string= (uri-host location-uri)
+                                                         (uri-host uri))
+                                                (eql (uri-port location-uri)
+                                                     (uri-port uri))))))
+                   (if (and same-server-p
                             (or (= status 307)
                                 (member method '(:get :head) :test #'eq)))
                        (progn
@@ -759,7 +762,11 @@
                                      (member method '(:get :head) :test #'eq))
                            (setf (getf args :method) :get))
                          (return-from request
-                           (apply #'request location-uri args))))))
+                           (apply #'request
+                                  location-uri
+                                  (if same-server-p
+                                      args
+                                      (remove-from-plist args :stream))))))))
                (unwind-protect
                     (let ((body (convert-body body
                                               (gethash "content-encoding" response-headers)
