@@ -239,7 +239,7 @@ All functions take similar arguments.
 - `ssl-key-file`, `ssl-cert-file`, `ssl-key-password`
   - for HTTPS connection
 - `stream`
-  - The stream to write an HTTP request. This is the way to reuse a connection and commonly used with `:keep-alive T`.
+  - The stream to write an HTTP request. This is the way to reuse a connection and commonly used with `:keep-alive T`. If the stream is not `eq` to the fifth return value (see below), the caller is responsible for ensuring the stream is closed.
 - `verbose` (boolean)
   - This option is for debugging. If this is `T`, it dumps the HTTP request headers.
 - `proxy` (string)
