@@ -508,7 +508,8 @@
                  (push-connection (format nil "~A://~A"
                                           (uri-scheme uri)
                                           (uri-authority uri)) stream)
-                 (ignore-errors (close stream)))))
+                 (when (open-stream-p stream)
+                   (close stream)))))
     (let* ((uri (quri:uri uri))
            (proxy (when (http-proxy-p proxy-uri) proxy))
            (content-type
@@ -625,7 +626,8 @@
                         (handler-bind ((error
                                          (lambda (e)
                                            (declare (ignore e))
-                                           (ignore-errors (close stream))
+                                           (when (open-stream-p stream)
+                                             (close stream :abort t))
                                            (when reusing-stream-p
                                              (setf use-connection-pool nil
                                                    reusing-stream-p nil
