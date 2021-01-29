@@ -66,7 +66,8 @@
                 :copy-stream
                 :if-let
                 :when-let
-                :ensure-list)
+                :ensure-list
+                :ends-with-subseq)
   (:import-from :uiop)
   (:export :request
 
@@ -471,15 +472,20 @@
                                                            (ca-path (uiop:native-namestring ca-path))
                                                            ((probe-file *ca-bundle*) *ca-bundle*)
                                                            ;; In executable environment, perhaps *ca-bundle* doesn't exist.
-                                                           (t :default)))))
+                                                           (t :default))))
+                               (ssl-cert-pem-p (and ssl-cert-file
+                                                    (ends-with-subseq ".pem" ssl-cert-file))))
                            (cl+ssl:with-global-context (ctx :auto-free-p t)
+                             (when ssl-cert-pem-p
+                               (cl+ssl:use-certificate-chain-file ssl-cert-file))
                              (cl+ssl:make-ssl-client-stream (if (http-proxy-p proxy-uri)
                                                                 (make-connect-stream uri version stream (make-proxy-authorization con-uri))
                                                                 stream)
                                                             :hostname (uri-host uri)
                                                             :verify (not insecure)
-                                                            :certificate ssl-cert-file
                                                             :key ssl-key-file
+                                                            :certificate (and (not ssl-cert-pem-p)
+                                                                              ssl-cert-file)
                                                             :password ssl-key-password))))
                        stream))
                (retry-request ()
