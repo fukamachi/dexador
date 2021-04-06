@@ -2,20 +2,30 @@ name: CI
 
 on:
   push:
-    paths: ['*']
   pull_request:
-    paths: ['*']
   schedule:
     - cron: '0 15 * * *'
 
 jobs:
-  test:
+  test_linux:
     name: ${{ matrix.lisp }} on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
         lisp: [sbcl-bin]
-        os: [ubuntu-latest, macOS-latest]
+        os: [ubuntu-latest]
+
+    steps:
+      - uses: actions/checkout@v1
+      - name: Run tests
+        run: make test
+  test_mac:
+    name: ${{ matrix.lisp }} on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        lisp: [sbcl-bin]
+        os: [macOS-latest]
 
     steps:
       - uses: actions/checkout@v1
