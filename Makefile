@@ -6,4 +6,4 @@ build:
 
 .PHONY: test
 test: build
-	docker run --rm -it -v ${PWD}:/app dexador-test-image
+	docker run --rm -i -v ${PWD}:/app dexador-test-image
