@@ -15,7 +15,7 @@ jobs:
     strategy:
       matrix:
         lisp: [sbcl-bin]
-        os: [ubuntu-latest, macOS-latest]
+        os: [ubuntu-latest]
 
     steps:
       - uses: actions/checkout@v1
