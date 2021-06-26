@@ -45,8 +45,9 @@
 (defun get (uri &rest args
             &key version headers basic-auth cookie-jar keep-alive use-connection-pool connect-timeout read-timeout max-redirects
               force-binary force-string want-stream
-              ssl-key-file ssl-cert-file ssl-key-password stream verbose proxy insecure ca-path)
-  (declare (ignore version headers basic-auth cookie-jar keep-alive use-connection-pool connect-timeout read-timeout max-redirects force-binary force-string want-stream ssl-key-file ssl-cert-file ssl-key-password stream verbose proxy insecure ca-path))
+              ssl-key-file ssl-cert-file ssl-key-password stream verbose proxy insecure ca-path
+              content)
+  (declare (ignore version headers basic-auth cookie-jar keep-alive use-connection-pool connect-timeout read-timeout max-redirects force-binary force-string want-stream ssl-key-file ssl-cert-file ssl-key-password stream verbose proxy insecure ca-path content))
   (apply #'request uri :method :get args))
 
 (defun post (uri &rest args
