@@ -1,4 +1,9 @@
 (in-package :cl-user)
+
+#+(and lispworks (not dexador-no-ssl))
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (require "comm"))
+
 (defpackage dexador.backend.usocket
   (:nicknames :dex.usocket)
   (:use :cl
@@ -55,7 +60,7 @@
                 :merge-uris)
   (:import-from :cl-base64
                 :string-to-base64-string)
-  #-(or windows dexador-no-ssl)
+  #-(or windows dexador-no-ssl lispworks)
   (:import-from :cl+ssl
                 :with-global-context
                 :make-context
@@ -440,6 +445,8 @@
                             (proxy-uri (and proxy (quri:uri proxy))))
   (declare (ignorable ssl-key-file ssl-cert-file ssl-key-password
                       connect-timeout ca-path)
+           #+lispworks
+           (ignorable insecure)
            (type real version)
            (type fixnum max-redirects))
   (labels ((make-new-connection (uri)
@@ -460,7 +467,7 @@
                    (if (string= scheme "https")
                        #+(or windows dexador-no-ssl)
                        (error "SSL not supported. Remove :dexador-no-ssl from *features* to enable SSL.")
-                       #-(or windows dexador-no-ssl)
+                       #-(or windows dexador-no-ssl lispworks)
                        (progn
                          (cl+ssl:ensure-initialized)
                          (let ((ctx (cl+ssl:make-context :verify-mode
@@ -487,6 +494,13 @@
                                                             :certificate (and (not ssl-cert-pem-p)
                                                                               ssl-cert-file)
                                                             :password ssl-key-password))))
+                       #+lispworks
+                       (progn
+                         (comm:attach-ssl (if (http-proxy-p proxy-uri)
+                                              (make-connect-stream uri version stream (make-proxy-authorization con-uri))
+                                              stream)
+                                          :ssl-side :client)
+                         stream)
                        stream))
                (retry-request ()
                  :report "Retry the same request."
