@@ -17,7 +17,8 @@
                 :*verbose*
                 :*not-verify-ssl*)
   (:import-from :alexandria
-                :copy-stream)
+                :copy-stream
+                :remove-from-plist)
   (:export :request
            :get
            :post
@@ -83,14 +84,19 @@
   (declare (ignore version headers basic-auth cookie-jar keep-alive use-connection-pool connect-timeout read-timeout force-binary force-string want-stream ssl-key-file ssl-cert-file ssl-key-password stream verbose proxy insecure ca-path))
   (apply #'request uri :method :delete args))
 
-(defun fetch (uri destination &key (if-exists :error) verbose proxy insecure)
+(defun fetch (uri destination &rest args
+                  &key (if-exists :error)
+                    version headers basic-auth cookie-jar keep-alive use-connection-pool connect-timeout read-timeout max-redirects
+                    ssl-key-file ssl-cert-file ssl-key-password stream verbose proxy insecure ca-path)
+  (declare (ignore version headers basic-auth cookie-jar keep-alive use-connection-pool connect-timeout read-timeout max-redirects ssl-key-file ssl-cert-file ssl-key-password stream verbose proxy insecure ca-path))
   (unless (and (eql if-exists nil)
                (probe-file destination))
     (with-open-file (out destination
                          :direction :output :element-type '(unsigned-byte 8)
                          :if-exists if-exists
                          :if-does-not-exist :create)
-      (let ((body (dex:get uri :want-stream t :force-binary t :verbose verbose :proxy proxy :insecure insecure)))
+      (let ((body (apply #'dex:get uri :want-stream t :force-binary t
+                         (remove-from-plist args :if-exists))))
         (alexandria:copy-stream body out)))))
 
 (defun ignore-and-continue (e)
