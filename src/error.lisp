@@ -26,6 +26,7 @@
            :http-request-expectation-failed
            :http-request-misdirected-request
            :http-request-upgrade-required
+           :http-request-too-many-requests
 
            ;; 5xx
            :http-request-internal-server-error
@@ -99,6 +100,7 @@
                                     (expectation-failed            . 417)
                                     (misdirected-request           . 421)
                                     (upgrade-required              . 426)
+                                    (too-many-requests             . 429)
 
                                     ;; 5xx (Server Errors)
                                     (internal-server-error      . 500)
