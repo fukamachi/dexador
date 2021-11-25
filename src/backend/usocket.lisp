@@ -641,7 +641,12 @@
                                              (go retry)))))
                           ,@body)
                         (restart-case
-                            (progn ,@body)
+                            (handler-bind ((error
+                                             (lambda (e)
+                                               (declare (ignore e))
+                                               (when (open-stream-p stream)
+                                                 (close stream :abort t)))))
+                              ,@body)
                           (retry-request ()
                             :report "Retry the same request."
                             (return-from request
