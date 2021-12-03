@@ -2,7 +2,9 @@
 (defpackage dexador.connection-cache
   (:use :cl)
   (:import-from :bordeaux-threads
-                :current-thread)
+                :current-thread
+                :make-lock
+                :with-lock-held)
   (:export :*connection-pool*
            :*use-connection-pool*
            :make-connection-pool
@@ -14,6 +16,8 @@
 (defparameter *connection-pool* nil)
 
 (defvar *threads-connection-pool* nil)
+(defvar *threads-connection-pool-lock*
+  #+thread-support (bt:make-lock "threads connection pool lock"))
 
 (defvar *use-connection-pool* t)
 
@@ -37,8 +41,9 @@
 (defun get-connection-pool ()
   (or *connection-pool*
       (gethash (bt:current-thread) *threads-connection-pool*)
-      (setf (gethash (bt:current-thread) *threads-connection-pool*)
-            (make-connection-pool))))
+      (bt:with-lock-held (*threads-connection-pool-lock*)
+        (setf (gethash (bt:current-thread) *threads-connection-pool*)
+              (make-connection-pool)))))
 #-thread-support
 (defun get-connection-pool ()
   (or *connection-pool*
