@@ -23,13 +23,13 @@
                "trivial-mimes"
                "chipz"
                "cl-base64"
-               "cl-reexport"
                "usocket"
                (:feature :windows "winhttp")
                (:feature :windows "flexi-streams")
                (:feature (:and (:not :windows) (:not :dexador-no-ssl)) "cl+ssl")
                "bordeaux-threads"
-               "alexandria")
+               "alexandria"
+               (:version "uiop" "3.1.1"))
   :components ((:module "src"
                 :components
                 ((:file "dexador" :depends-on ("backend" "error"))
