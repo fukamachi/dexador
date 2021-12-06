@@ -1,5 +1,5 @@
 (in-package :cl-user)
-(defpackage dexador
+(uiop:define-package dexador
   (:nicknames :dex)
   (:use :cl
         #-windows #:dexador.backend.usocket
@@ -38,10 +38,9 @@
 
            ;; Restarts
            :retry-request
-           :ignore-and-continue))
+           :ignore-and-continue)
+  (:use-reexport :dexador.error))
 (in-package :dexador)
-
-(cl-reexport:reexport-from :dexador.error)
 
 (defun get (uri &rest args
             &key version headers basic-auth cookie-jar keep-alive use-connection-pool connect-timeout read-timeout max-redirects
