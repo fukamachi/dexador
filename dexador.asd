@@ -26,7 +26,7 @@
                "usocket"
                (:feature :windows "winhttp")
                (:feature :windows "flexi-streams")
-               (:feature (:and (:not :windows) (:not :dexador-no-ssl)) "cl+ssl")
+               (:feature (:and (:not :windows) (:not :lispworks) (:not :dexador-no-ssl)) "cl+ssl")
                "bordeaux-threads"
                "alexandria"
                (:version "uiop" "3.1.1"))
