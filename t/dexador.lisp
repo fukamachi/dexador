@@ -492,3 +492,44 @@
                      (dexador.decoding-stream:make-decoding-stream stream)))
                (peek-char nil decoding-stream)
                (read-char decoding-stream))))))
+
+
+(deftest connection-cache-test
+  (let ((dexador.connection-cache:*connection-pool* (dexador.connection-cache:make-connection-pool 2)))
+    ;; Make sure empty cache works
+    (ok (null (dexador.connection-cache:steal-connection "some-host")))
+    (dexador.connection-cache:clear-connection-pool)
+    ;; Make sure push / steal works
+    (dexador.connection-cache:push-connection "host1" "host1-socket")
+    (ok (string= (dexador.connection-cache:steal-connection "host1") "host1-socket"))
+    ;; Make sure steal actually removed the connection
+    (ok (null (dexador.connection-cache:steal-connection "host1")))
+    ;; Check to make sure multiple elements with the same key work
+    (dexador.connection-cache:push-connection "host1" "host1-socket1")
+    (dexador.connection-cache:push-connection "host1" "host1-socket2")
+    (let ((result1 (dexador.connection-cache:steal-connection "host1"))
+          (result2 (dexador.connection-cache:steal-connection "host1")))
+      (ok (and (stringp result1) (stringp result2) (not (string= result1 result2)))))
+    ;; make sure hash table stays clean
+    (ok (zerop (hash-table-size (dexador.connection-cache::lru-pool-hash-table dexador.connection-cache::*connection-pool*))))
+    ;; make sure maximum connections is obeyed and least recently used element is evicted
+    (dexador.connection-cache:push-connection "host1" "host1-socket1")
+    (dexador.connection-cache:push-connection "host2" "host2-socket")
+    (dexador.connection-cache:push-connection "host2" "host2-socket")
+    (ok (null (dexador.connection-cache:steal-connection "host1")))
+    (ok (string= (dexador.connection-cache:steal-connection "host2") "host2-socket"))
+    (ok (string= (dexador.connection-cache:steal-connection "host2") "host2-socket"))
+    (ok (null (dexador.connection-cache:steal-connection "host2")))
+    ;; Make sure clear-connection-pool works and callbacks are called
+    (let ((called nil))
+      (dexador.connection-cache:push-connection "host1" "host1-socket1" (lambda () (setf called t)))
+      (dexador.connection-cache:clear-connection-pool)
+      (ok called)
+      (setf called nil)
+      (dexador.connection-cache:push-connection "host1" "host1-socket" (lambda () (setf called "host1")))
+      (dexador.connection-cache:push-connection "host2" "host2-socket" (lambda () (setf called "host2")))
+      (dexador.connection-cache:push-connection "host3" "host3-socket" (lambda () (setf called "host3")))
+      (ok (string= called "host1"))
+      (dexador.connection-cache:push-connection "host4" "host4-socket" (lambda () (setf called "host4")))
+      (ok (string= called "host2")))))
+  
