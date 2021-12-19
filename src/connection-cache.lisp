@@ -5,7 +5,8 @@
                 :make-lock
                 :with-lock-held)
   (:export :*connection-pool*
-           :*use-connection-pool*
+   :*use-connection-pool*
+           :*max-active-connections*
            :make-connection-pool
            :steal-connection
            :push-connection
@@ -13,6 +14,9 @@
 (in-package :dexador.connection-cache)
 
 (defvar *use-connection-pool* t)
+(defvar *max-active-connections* 8
+  "Allowed number of active connections to all hosts.  If you change this,
+  then call (make-new-connection-pool).")
 
 (defstruct lru-pool-elt
   (prev nil :type (or null lru-pool-elt))
@@ -31,13 +35,20 @@
   (num-elts 0 :type fixnum)
   (max-elts 8 :type fixnum))
 
-(defun make-connection-pool (&optional (max-active-connections 8))
+(defun make-connection-pool (&optional (max-active-connections *max-active-connections*))
   (make-lru-pool :hash-table (make-hash-table :test 'equal) :max-elts max-active-connections))
 
-(defparameter *connection-pool* (make-connection-pool))
+(defun make-new-connection-pool (&optional (max-active-connections *max-active-connections*))
+  (clear-connection-pool)
+  (setf *connection-pool* (make-new-connection-pool)))
+
+(defvar *connection-pool* nil)
+
+(make-new-connection-pool)
 
 (defun get-from-lru-pool (lru-pool key)
-  "Must be called with lru-cache-lock held.  Removes element from pool."
+  "Takes an element from the LRU-POOL matching KEY.  Must be called with LRU-POOL-LOCK held.
+   The element is removed from the pool."
   (let* ((hash-table (lru-pool-hash-table lru-pool))
          (possible-elts (gethash key (lru-pool-hash-table lru-pool))))
     (when possible-elts
@@ -58,8 +69,11 @@
         (lru-pool-elt-elt elt)))))
 
 (defun evict-tail (lru-pool)
-  "Must be called with lru-pool-lock held.  Returns the eviction callback which you
-   must call (after releasing the lru-pool-lock)."
+  "Removes the least recently used element of the LRU-POOL and returns
+    (values evicted-element eviction-callback t) if there was
+   an element to remove, otherwise nil.  Must be called with LRU-POOL-LOCK held.
+
+   Outside the LRU-POOL-LOCK you must call the returned EVICTION-CALLBACK with the EVICTED-ELEMENT."
   ;; slightly different from get-from-lru-pool because we want to get rid of the
   ;; actual oldest element (one could in principle call get-from-lru-pool on
   ;; (lru-pool-elt-key (lru-pool-tail lru-pool)) if you didn't care
@@ -77,11 +91,15 @@
               (setf (gethash key hash-table) remaining)
               (remhash key hash-table))))
       (decf (lru-pool-num-elts lru-pool))
-      (values (lru-pool-elt-eviction-callback tail) t))))
+      (values (lru-pool-elt-elt tail) (lru-pool-elt-eviction-callback tail) t))))
 
 (defun add-to-lru-pool (lru-pool key elt eviction-callback)
-  "Must be called with lru-pool-lock held.  Adds elt as most recently used.
-   If an element was evicted, returns (values eviction-callback t) otherwise nil"
+  "Adds ELT to an LRU-POOL with potentially non-unique KEY, potentially evicting another element to
+   make room.  EVICTION-CALLBACK will be called with one parameter ELT, when ELT is evicted from the
+   LRU-POOL.  ADD-TO-LRU-POOL must be called with LRU-POOL-LOCK held.
+
+   If an element was evicted to make space, returns (values evicted-elt eviction-callback t)
+   otherwise nil.  The EVICTION-CALLBACK should take one parameter, the evicted element."
   (declare (type lru-pool lru-pool))
   (let* ((old-head (lru-pool-head lru-pool))
          (lru-pool-elt (make-lru-pool-elt :prev nil :next old-head :elt elt :key key :eviction-callback eviction-callback))
@@ -96,15 +114,19 @@
       (evict-tail lru-pool))))
 
 (defmethod print-object ((obj lru-pool-elt) str) ;; avoid printing loops
-  (format str "<LRU-POOL-ELT ~A NEXT ~A>" (lru-pool-elt-key obj) (lru-pool-elt-next obj)))
+  (print-unreadable-object (obj str :type "LRU-POOL-ELT")
+    (format str "~A NEXT ~A" (lru-pool-elt-key obj) (lru-pool-elt-next obj))))
 
 (defmethod print-object ((obj lru-pool) str) ;; avoid printing loops
-  (let (objs)
-    (loop with lru-pool-elt = (lru-pool-head obj)
-          while lru-pool-elt
-          do (push (cons (lru-pool-elt-key lru-pool-elt) (lru-pool-elt-elt lru-pool-elt)) objs)
-          do (setf lru-pool-elt (lru-pool-elt-next lru-pool-elt)))
-    (format str "<LRU-POOL ~A/~A elts:~%~{ ~A~^~%~}>" (lru-pool-num-elts obj) (lru-pool-max-elts obj) objs)))
+  (print-unreadable-object (obj str :type "LRU-POOL")
+    (let (objs)
+      (loop with lru-pool-elt = (lru-pool-head obj)
+            while lru-pool-elt
+            do (push (list (lru-pool-elt-key lru-pool-elt) (lru-pool-elt-elt lru-pool-elt)) objs)
+            do (setf lru-pool-elt (lru-pool-elt-next lru-pool-elt)))
+      (if objs
+          (format str "~A/~A elts~%~{ ~{~A~^: ~}~^~%~}" (lru-pool-num-elts obj) (lru-pool-max-elts obj) objs)
+          (format str "empty")))))
 
 (defmacro with-lock (lock &body body)
   (declare (ignorable lock))
@@ -112,31 +134,35 @@
                       ,@body)
   #-thread-support `(progn ,@body))
 
-(defun push-connection (host-port socket &optional eviction-callback)
-  "Add socket back to connection pool"
+(defun push-connection (host-port stream &optional eviction-callback)
+  "Add STREAM back to connection pool with key HOST-PORT.  EVICTION-CALLBACK
+   must be a function of a single parameter, and will be called with STREAM
+   if the HOST-PORT/SOCKET pair is evicted from the connection pool."
   (when *use-connection-pool*
     (let ((pool *connection-pool*))
-      (let ((evicted-elt-eviction-callback
-              (with-lock (lru-pool-lock pool)
-                (add-to-lru-pool pool host-port socket eviction-callback))))
-        (and evicted-elt-eviction-callback (funcall evicted-elt-eviction-callback))
+      (multiple-value-bind (evicted-elt eviction-callback)
+          (with-lock (lru-pool-lock pool)
+            (add-to-lru-pool pool host-port socket eviction-callback))
+        (and eviction-callback (funcall eviction-callback evicted-elt))
         (values)))))
 
 (defun steal-connection (host-port)
+  "Return the STREAM associated with key HOST-PORT"
   (when *use-connection-pool*
     (let ((pool *connection-pool*))
       (with-lock (lru-pool-lock pool)
         (get-from-lru-pool pool host-port)))))
 
 (defun clear-connection-pool ()
+  "Remove all elements from the connection pool, calling their eviction-callbacks."
   (when *use-connection-pool*
     (let ((pool *connection-pool*)
-          eviction-callback element-was-evicted)
-      (loop for count from 0
-            do (setf (values eviction-callback element-was-evicted) (evict-tail pool))
-            do (when eviction-callback (funcall eviction-callback))
-            do (format t "Evicted ~A elts so far~%" count)
-            while element-was-evicted))))
+          evicted-element eviction-callback element-was-evicted)
+      (when pool
+        (loop for count from 0
+              do (setf (values evicted-element eviction-callback element-was-evicted) (evict-tail pool))
+              do (when eviction-callback (funcall eviction-callback evicted-element))
+              while element-was-evicted)))))
 
             
             
