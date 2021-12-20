@@ -746,14 +746,15 @@
                      (transfer-encoding-p
                        (read-until-crlf*2 body))))
 
-                 (let ((location-uri (quri:uri (gethash "location" response-headers))))
-                   (if (and (or (null (uri-host location-uri))
-                                (and (string= (uri-scheme location-uri)
-                                              (uri-scheme uri))
-                                     (string= (uri-host location-uri)
-                                              (uri-host uri))
-                                     (eql (uri-port location-uri)
-                                          (uri-port uri))))
+                 (let* ((location-uri (quri:uri (gethash "location" response-headers)))
+                        (same-server-p (or (null (uri-host location-uri))
+                                           (and (string= (uri-scheme location-uri)
+                                                         (uri-scheme uri))
+                                                (string= (uri-host location-uri)
+                                                         (uri-host uri))
+                                                (eql (uri-port location-uri)
+                                                     (uri-port uri))))))
+                   (if (and same-server-p
                             (or (= status 307)
                                 (member method '(:get :head) :test #'eq)))
                        (progn ;; redirection to the same host
@@ -785,8 +786,10 @@
                          (unless (or (= status 307)
                                      (member method '(:get :head) :test #'eq))
                            (setf (getf args :method) :get))
-                         (return-from request ;; we do not return the stream to the pool, as desired.
-                           (apply #'request location-uri args))))))
+                         (return-from request
+                           (apply #'request location-uri (if same-server-p ;; do not use user supplied stream
+                                                             args
+                                                             (progn (remf args :stream) args))))))))
                (unwind-protect
                     (let* ((keep-connection-alive (connection-keep-alive-p
                                                    (gethash "connection" response-headers)))
