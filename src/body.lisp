@@ -25,7 +25,7 @@
            #:decompress-body))
 (in-package #:dexador.body)
 
-(defun decode-body (content-type body &key default-charset)
+(defun decode-body (content-type body &key default-charset on-close)
   (let ((charset (or (and content-type
                           (detect-charset content-type body))
                      default-charset))
@@ -33,7 +33,7 @@
     (if charset
         (handler-case
             (if (streamp body)
-                (make-decoding-stream body :encoding charset)
+                (make-decoding-stream body :encoding charset :on-close on-close)
                 (babel:octets-to-string body :encoding charset))
           (babel:character-decoding-error (e)
             (warn (format nil "Failed to decode the body to ~S due to the following error (falling back to binary):~%  ~A"

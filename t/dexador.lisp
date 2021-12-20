@@ -378,6 +378,7 @@
     ;; binary stream
     (let ((body (dex:get (localhost) :want-stream t :force-binary t :keep-alive nil)))
       (ok (typep body 'stream) "body is a stream")
+      (ok (open-stream-p body) "body is open")
       (ok (subtypep (stream-element-type body) '(unsigned-byte 8))
           "body is a octets stream")
       (let ((buf (make-array 2 :element-type '(unsigned-byte 8))))
@@ -511,7 +512,7 @@
           (result2 (dexador.connection-cache:steal-connection "host1")))
       (ok (and (stringp result1) (stringp result2) (not (string= result1 result2)))))
     ;; make sure hash table stays clean
-    (ok (zerop (hash-table-size (dexador.connection-cache::lru-pool-hash-table dexador.connection-cache::*connection-pool*))))
+    (ok (zerop (hash-table-count (dexador.connection-cache::lru-pool-hash-table dexador.connection-cache::*connection-pool*))))
     ;; make sure maximum connections is obeyed and least recently used element is evicted
     (dexador.connection-cache:push-connection "host1" "host1-socket1")
     (dexador.connection-cache:push-connection "host2" "host2-socket")
@@ -522,14 +523,14 @@
     (ok (null (dexador.connection-cache:steal-connection "host2")))
     ;; Make sure clear-connection-pool works and callbacks are called
     (let ((called nil))
-      (dexador.connection-cache:push-connection "host1" "host1-socket1" (lambda () (setf called t)))
+      (dexador.connection-cache:push-connection "host1" "host1-socket1" (lambda (s) (declare (ignore s)) (setf called t)))
       (dexador.connection-cache:clear-connection-pool)
       (ok called)
       (setf called nil)
-      (dexador.connection-cache:push-connection "host1" "host1-socket" (lambda () (setf called "host1")))
-      (dexador.connection-cache:push-connection "host2" "host2-socket" (lambda () (setf called "host2")))
-      (dexador.connection-cache:push-connection "host3" "host3-socket" (lambda () (setf called "host3")))
+      (dexador.connection-cache:push-connection "host1" "host1-socket" (lambda (s) (declare (ignore s))  (setf called "host1")))
+      (dexador.connection-cache:push-connection "host2" "host2-socket" (lambda (s) (declare (ignore s)) (setf called "host2")))
+      (dexador.connection-cache:push-connection "host3" "host3-socket" (lambda (s) (declare (ignore s)) (setf called "host3")))
       (ok (string= called "host1"))
-      (dexador.connection-cache:push-connection "host4" "host4-socket" (lambda () (setf called "host4")))
+      (dexador.connection-cache:push-connection "host4" "host4-socket" (lambda (s) (declare (ignore s)) (setf called "host4")))
       (ok (string= called "host2")))))
   

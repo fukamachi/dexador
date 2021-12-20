@@ -40,11 +40,9 @@
 
 (defun make-new-connection-pool (&optional (max-active-connections *max-active-connections*))
   (clear-connection-pool)
-  (setf *connection-pool* (make-new-connection-pool)))
+  (setf *connection-pool* (make-connection-pool max-active-connections)))
 
 (defvar *connection-pool* nil)
-
-(make-new-connection-pool)
 
 (defun get-from-lru-pool (lru-pool key)
   "Takes an element from the LRU-POOL matching KEY.  Must be called with LRU-POOL-LOCK held.
@@ -142,7 +140,7 @@
     (let ((pool *connection-pool*))
       (multiple-value-bind (evicted-elt eviction-callback)
           (with-lock (lru-pool-lock pool)
-            (add-to-lru-pool pool host-port socket eviction-callback))
+            (add-to-lru-pool pool host-port stream eviction-callback))
         (and eviction-callback (funcall eviction-callback evicted-elt))
         (values)))))
 
@@ -164,5 +162,4 @@
               do (when eviction-callback (funcall eviction-callback evicted-element))
               while element-was-evicted)))))
 
-            
-            
+(make-new-connection-pool)

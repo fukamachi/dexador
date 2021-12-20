@@ -17,6 +17,7 @@
                "fast-io"
                "babel"
                "trivial-gray-streams"
+               "trivial-garbage"
                "chunga"
                "cl-ppcre"
                "cl-cookie"

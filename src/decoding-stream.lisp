@@ -48,7 +48,8 @@ Similar to flexi-input-stream, except this uses Babel for decoding."))
               :accessor decoding-stream-last-char)
    (last-char-size :type fixnum
                    :initform 0
-                   :accessor decoding-stream-last-char-size)))
+                   :accessor decoding-stream-last-char-size)
+   (on-close :type (or null function) :initform nil :initarg :on-close)))
 
 (defmethod initialize-instance :after ((stream decoding-stream) &rest initargs)
   (declare (ignore initargs))
@@ -56,10 +57,12 @@ Similar to flexi-input-stream, except this uses Babel for decoding."))
     (when (keywordp encoding)
       (setf encoding (get-character-encoding encoding)))))
 
-(defun make-decoding-stream (stream &key (encoding babel-encodings:*default-character-encoding*))
+(defun make-decoding-stream (stream &key (encoding babel-encodings:*default-character-encoding*)
+                                      (on-close))
   (let ((decoding-stream (make-instance 'decoding-stream
                                         :stream stream
-                                        :encoding encoding)))
+                                        :encoding encoding
+                                        :on-close on-close)))
     (fill-buffer decoding-stream)
     decoding-stream))
 
@@ -153,6 +156,7 @@ Similar to flexi-input-stream, except this uses Babel for decoding."))
   'unicode-char)
 
 (defmethod close ((stream decoding-stream) &key abort)
+  ;; TODO: modify me to return the connection to the connection pool
   (with-slots (stream) stream
     (when (open-stream-p stream)
       (close stream :abort abort))))

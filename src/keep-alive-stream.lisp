@@ -11,49 +11,79 @@
                 :xor)
   (:export :make-keep-alive-stream
            :keep-alive-stream
-           :keep-alive-chunked-stream))
+           :keep-alive-chunked-stream
+   :keep-alive-stream-close-underlying-stream
+   :keep-alive-stream-stream))
 (in-package :dexador.keep-alive-stream)
 
 (defclass keep-alive-stream (fundamental-input-stream)
   ((stream :type stream
            :initarg :stream
            :initform (error ":stream is required")
-           :accessor keep-alive-stream-stream)
+           :accessor keep-alive-stream-stream
+           :documentation "A stream; when we read END elements from it, we call CLOSE-ACTION on it and
+   set this slot to nil.")
    (end :initarg :end
         :initform nil
-        :accessor keep-alive-stream-end)))
+        :accessor keep-alive-stream-end)
+   (close-action :initarg :on-close-or-eof :reader close-action
+                 :documentation "A (lambda (stream abort)) which will be called with keep-alive-stream-stream
+   when the stream is either closed or we hit end of file or we hit end")))
+
+(defun keep-alive-stream-close-underlying-stream (underlying-stream abort)
+  (when (and underlying-stream (open-stream-p underlying-stream))
+    (close underlying-stream :abort abort)))
 
 (defclass keep-alive-chunked-stream (keep-alive-stream)
   ((state :type fixnum
           :initarg :state
           :initform -1)))
 
-(defun make-keep-alive-stream (stream &key end chunked)
+(defun make-keep-alive-stream (stream &key end chunked (on-close-or-eof #'keep-alive-stream-close-underlying-stream))
+  "ON-CLOSE-OR-EOF takes a single parameter, STREAM (the stream passed in here, not the
+keep-alive-stream), and should handle clean-up of it"
   (assert (xor end chunked))
+  (format t "CHUNKED IS ~A~%" chunked)
   (if chunked
-      (make-instance 'keep-alive-chunked-stream :stream stream)
-      (make-instance 'keep-alive-stream :stream stream :end end)))
+      (make-instance 'keep-alive-chunked-stream :stream stream :on-close-or-eof on-close-or-eof)
+      (make-instance 'keep-alive-stream :stream stream :end end :on-close-or-eof on-close-or-eof)))
 
 (defmethod stream-read-byte ((stream keep-alive-stream))
-  (block nil
-    (when (<= (keep-alive-stream-end stream) 0)
-      (return :eof))
-    (let ((byte (read-byte (keep-alive-stream-stream stream) nil nil)))
+  "Return :EOF or byte read.  When we hit EOF or finish reading our allowed content,
+   call the close-action on our underlying-stream and return EOF."
+  (let ((byte :eof)
+        (underlying-stream (keep-alive-stream-stream stream)))
+    (labels ((maybe-close-and-return-eof (&optional (force-close nil))
+               (cond
+                 ((not underlying-stream)
+                  (return-from stream-read-byte :eof))
+                 ((or (<= (keep-alive-stream-end stream) 0) force-close)
+                  (funcall (close-action stream) underlying-stream nil)
+                  (setf (keep-alive-stream-stream stream) nil)
+                  (return-from stream-read-byte :eof)))))
+      (maybe-close-and-return-eof)
+      (setf byte (read-byte underlying-stream nil :eof))
       (decf (keep-alive-stream-end stream) 1)
-      (unless byte 
-        (return :eof))      
-      (return byte))))
+      (maybe-close-and-return-eof (eql byte :eof))
+      byte)))
 
 (defmethod stream-read-byte ((stream keep-alive-chunked-stream))
-  (block nil
-    (when (= (slot-value stream 'state) 3)
-      (return :eof))
-
-    (let ((byte (read-byte (keep-alive-stream-stream stream) nil nil)))
-      (unless byte
-        (return :eof))
-
-      (with-slots (state) stream
+  "Return :EOF or byte read.  When we hit :EOF or finish reading our chunk,
+   call the close-action on our underlying-stream and return :EOF"
+  (let ((byte :eof)
+        (underlying-stream (keep-alive-stream-stream stream)))
+    (with-slots (state) stream
+      (labels ((maybe-close-and-return (&optional (force-close nil))
+                 (cond
+                   ((not underlying-stream)
+                    (return-from stream-read-byte :eof))
+                   ((or force-close (= state 3))
+                    (funcall (close-action stream) underlying-stream nil)
+                    (setf (keep-alive-stream-stream stream) nil)
+                    (return-from stream-read-byte byte)))))
+        (maybe-close-and-return)
+        (setf byte (read-byte (keep-alive-stream-stream stream) nil :eof))
+        (maybe-close-and-return (eql byte :eof))
         (ecase state
           (-1
            (when (= byte (char-code #\Return))
@@ -72,9 +102,9 @@
           (2
            (if (= byte (char-code #\Newline))
                (setf state 3)
-               (setf state -1)))))
-
-      (return byte))))
+               (setf state -1))))
+        (maybe-close-and-return)
+        byte))))
 
 (defmethod stream-read-sequence ((stream keep-alive-stream) sequence start end &key)
   (declare (optimize speed))
@@ -99,9 +129,8 @@
   '(unsigned-byte 8))
 
 (defmethod open-stream-p ((stream keep-alive-stream))
-  (open-stream-p (keep-alive-stream-stream stream)))
+  (let ((underlying-stream (keep-alive-stream-stream stream)))
+    (and underlying-stream (open-stream-p underlying-stream))))
 
 (defmethod close ((stream keep-alive-stream) &key abort)
-  (with-slots (stream) stream
-    (when (open-stream-p stream)
-      (close stream :abort abort))))
+  (funcall (close-action stream) (keep-alive-stream-stream stream) abort))
