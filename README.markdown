@@ -239,11 +239,13 @@ All functions take similar arguments.
 - `ssl-key-file`, `ssl-cert-file`, `ssl-key-password`
   - for HTTPS connection
 - `stream`
-  - The stream to write an HTTP request. This is the way to reuse a connection and commonly used with `:keep-alive T`.
+  - The stream to write an HTTP request. This is a way to reuse a connection and commonly used with `:keep-alive T`.  This allows the caller to do connection pooling, etc.  It is easier to just use `:use-connection-pool t` and let the dexador internals take care of this for you (only supported for usocket backends).
 - `verbose` (boolean)
   - This option is for debugging. If this is `T`, it dumps the HTTP request headers.
 - `proxy` (string)
   - for use proxy.
+- `use-connection-pool` (boolean)
+  - When combined with `:keep-alive t`, will internally cache the socket connection to web servers to avoid having to open new ones.  This is compatible with `:want-stream t` (when you close the returned stream or it is garbage collected the connection will be returned to the pool).  If you pass in a stream with `:stream` then the connection pool is not used (unless there is a redirect to a new web server).  This is not supported when using the WINHTTP backend.
 
 ### \[Function\] request
 
@@ -269,7 +271,7 @@ The `response-headers` is a hash table which represents HTTP response headers. N
 
 The `uri` is a [QURI](https://github.com/fukamachi/quri) object which represents the last URI Dexador requested.
 
-The `stream` is a usocket stream to communicate with the HTTP server if the connection is still alive and can be reused. This value may be `NIL` if `:keep-alive` is `NIL` or the server closed the connection with `Connection: close` header.
+The `stream` is a usocket stream to communicate with the HTTP server if the connection is still alive and can be reused. This value may be `NIL` if `:keep-alive` is `NIL` or the server closed the connection with `Connection: close` header or you are using `:use-connection-pool t` which handles re-using the connections for you.
 
 This function signals `http-request-failed` when the HTTP status code is 4xx or 5xx.
 
