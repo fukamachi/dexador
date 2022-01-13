@@ -222,16 +222,16 @@
            d))
     (boundary-line)))
 
-(defun convert-body (body content-encoding content-type content-length chunkedp force-binary force-string keep-alive-p)
+(defun convert-body (body content-encoding content-type content-length chunkedp force-binary force-string keep-alive-p on-close)
   (when (and (streamp body)
              keep-alive-p)
     (cond
       (chunkedp
        (setf body
-             (make-keep-alive-stream body :chunked t)))
+             (make-keep-alive-stream body :chunked t :on-close-or-eof on-close)))
       (content-length
        (setf body
-             (make-keep-alive-stream body :end content-length)))))
+             (make-keep-alive-stream body :end content-length :on-close-or-eof on-close)))))
   (let ((body (decompress-body content-encoding
                                (if (and (streamp body)
                                         chunkedp)
@@ -420,6 +420,37 @@
           (t
            (fail 'dexador.error:socks5-proxy-request-failed :reason "Unknown address")))))))
 
+(defun make-ssl-stream (stream ca-path ssl-key-file ssl-cert-file ssl-key-password hostname insecure)
+  #+(or windows dexador-no-ssl)
+  (error "SSL not supported. Remove :dexador-no-ssl from *features* to enable SSL.")
+  #-(or windows dexador-no-ssl)
+  (cl+ssl:ensure-initialized)
+  (let ((ctx (cl+ssl:make-context :verify-mode
+                                  (if insecure
+                                      cl+ssl:+ssl-verify-none+
+                                      cl+ssl:+ssl-verify-peer+)
+                                  :verify-location
+                                  (cond
+                                    (ca-path (uiop:native-namestring ca-path))
+                                    ((probe-file *ca-bundle*) *ca-bundle*)
+                                    ;; In executable environment, perhaps *ca-bundle* doesn't exist.
+                                    (t :default))))
+        (ssl-cert-pem-p (and ssl-cert-file
+                             (ends-with-subseq ".pem" ssl-cert-file))))
+    (cl+ssl:with-global-context (ctx :auto-free-p t)
+      (when ssl-cert-pem-p
+        (cl+ssl:use-certificate-chain-file ssl-cert-file))
+      (cl+ssl:make-ssl-client-stream stream
+                                     :hostname hostname
+                                     :verify (not insecure)
+                                     :key ssl-key-file
+                                     :certificate (and (not ssl-cert-pem-p)
+                                                       ssl-cert-file)
+                                     :password ssl-key-password))))
+
+(defstruct usocket-wrapped-stream
+  stream)
+
 (defun-careful request (uri &rest args
                             &key (method :get) (version 1.1)
                             content headers
@@ -437,7 +468,8 @@
                             (insecure *not-verify-ssl*)
                             ca-path
                             &aux
-                            (proxy-uri (and proxy (quri:uri proxy))))
+                            (proxy-uri (and proxy (quri:uri proxy)))
+                            (user-supplied-stream (if (usocket-wrapped-stream-p stream) (usocket-wrapped-stream-stream stream) stream)))
   (declare (ignorable ssl-key-file ssl-cert-file ssl-key-password
                       connect-timeout ca-path)
            (type real version)
@@ -458,35 +490,9 @@
                    (when (socks5-proxy-p proxy-uri)
                      (ensure-socks5-connected stream stream uri method))
                    (if (string= scheme "https")
-                       #+(or windows dexador-no-ssl)
-                       (error "SSL not supported. Remove :dexador-no-ssl from *features* to enable SSL.")
-                       #-(or windows dexador-no-ssl)
-                       (progn
-                         (cl+ssl:ensure-initialized)
-                         (let ((ctx (cl+ssl:make-context :verify-mode
-                                                         (if insecure
-                                                             cl+ssl:+ssl-verify-none+
-                                                             cl+ssl:+ssl-verify-peer+)
-                                                         :verify-location
-                                                         (cond
-                                                           (ca-path (uiop:native-namestring ca-path))
-                                                           ((probe-file *ca-bundle*) *ca-bundle*)
-                                                           ;; In executable environment, perhaps *ca-bundle* doesn't exist.
-                                                           (t :default))))
-                               (ssl-cert-pem-p (and ssl-cert-file
-                                                    (ends-with-subseq ".pem" ssl-cert-file))))
-                           (cl+ssl:with-global-context (ctx :auto-free-p t)
-                             (when ssl-cert-pem-p
-                               (cl+ssl:use-certificate-chain-file ssl-cert-file))
-                             (cl+ssl:make-ssl-client-stream (if (http-proxy-p proxy-uri)
-                                                                (make-connect-stream uri version stream (make-proxy-authorization con-uri))
-                                                                stream)
-                                                            :hostname (uri-host uri)
-                                                            :verify (not insecure)
-                                                            :key ssl-key-file
-                                                            :certificate (and (not ssl-cert-pem-p)
-                                                                              ssl-cert-file)
-                                                            :password ssl-key-password))))
+                       (make-ssl-stream (if (http-proxy-p proxy-uri)
+                                               (make-connect-stream uri version stream (make-proxy-authorization con-uri))
+                                               stream) ca-path ssl-key-file ssl-cert-file ssl-key-password (uri-host uri) insecure)
                        stream))
                (retry-request ()
                  :report "Retry the same request."
@@ -509,13 +515,18 @@
                            (equalp connection-header "keep-alive"))
                       (not (equalp connection-header "close")))))
            (finalize-connection (stream connection-header uri)
-             (if (or want-stream
-                     (connection-keep-alive-p connection-header))
-                 (push-connection (format nil "~A://~A"
-                                          (uri-scheme uri)
-                                          (uri-authority uri)) stream)
-                 (when (open-stream-p stream)
-                   (close stream)))))
+             "If KEEP-ALIVE is in the connection-header and the user is not requesting a stream,
+              we will push the connection to our connection pool if allowed, otherwise we return
+              the stream back to the user who must close it."
+             (unless want-stream
+               (cond
+                 ((and (connection-keep-alive-p connection-header) (not user-supplied-stream) use-connection-pool)
+                  (push-connection (format nil "~A://~A"
+                                           (uri-scheme uri)
+                                           (uri-authority uri)) stream #'close))
+                 ((not keep-alive)
+                  (when (open-stream-p stream)
+                    (close stream)))))))
     (let* ((uri (quri:uri uri))
            (proxy (when (http-proxy-p proxy-uri) proxy))
            (content-type
@@ -531,7 +542,7 @@
            (content (if form-urlencoded-p
                         (quri:url-encode-params content)
                         content))
-           (stream (or stream
+           (stream (or user-supplied-stream
                        (and use-connection-pool
                             (steal-connection (format nil "~A://~A"
                                                       (uri-scheme uri)
@@ -631,19 +642,20 @@
                    `(if reusing-stream-p
                         (handler-bind ((error
                                          (lambda (e)
-                                           (declare (ignore e))
+                                           (declare (ignorable e))
                                            (when (open-stream-p stream)
                                              (close stream :abort t))
                                            (when reusing-stream-p
                                              (setf use-connection-pool nil
                                                    reusing-stream-p nil
+                                                   user-supplied-stream nil
                                                    stream (make-new-connection uri))
                                              (go retry)))))
                           ,@body)
                         (restart-case
                             (handler-bind ((error
                                              (lambda (e)
-                                               (declare (ignore e))
+                                               (declare (ignorable e))
                                                (when (open-stream-p stream)
                                                  (close stream :abort t)))))
                               ,@body)
@@ -704,6 +716,7 @@
                                           :method method)))
                  (setf use-connection-pool nil
                        reusing-stream-p nil
+                       user-supplied-stream nil
                        stream (make-new-connection uri))
                  (go retry))
                (when verbose
@@ -733,17 +746,18 @@
                      (transfer-encoding-p
                        (read-until-crlf*2 body))))
 
-                 (let ((location-uri (quri:uri (gethash "location" response-headers))))
-                   (if (and (or (null (uri-host location-uri))
-                                (and (string= (uri-scheme location-uri)
-                                              (uri-scheme uri))
-                                     (string= (uri-host location-uri)
-                                              (uri-host uri))
-                                     (eql (uri-port location-uri)
-                                          (uri-port uri))))
+                 (let* ((location-uri (quri:uri (gethash "location" response-headers)))
+                        (same-server-p (or (null (uri-host location-uri))
+                                           (and (string= (uri-scheme location-uri)
+                                                         (uri-scheme uri))
+                                                (string= (uri-host location-uri)
+                                                         (uri-host uri))
+                                                (eql (uri-port location-uri)
+                                                     (uri-port uri))))))
+                   (if (and same-server-p
                             (or (= status 307)
                                 (member method '(:get :head) :test #'eq)))
-                       (progn
+                       (progn ;; redirection to the same host
                          (setq uri (merge-uris location-uri uri))
                          (setq first-line-data
                                (with-fast-output (buffer)
@@ -754,15 +768,16 @@
                          (decf max-redirects)
                          (if (equalp (gethash "connection" response-headers) "close")
                              (progn
-                               (finalize-connection stream (gethash "connection" response-headers) uri)
+                               (finalize-connection stream (gethash "connection" response-headers) uri) ;; maybe return the old connection to the pool
                                (setq use-connection-pool nil
                                      reusing-stream-p nil
+                                     user-supplied-stream nil
                                      stream (make-new-connection uri)))
                              (setq reusing-stream-p t))
                          (go retry))
-                       (progn
+                       (progn ;; this is a redirection to a different host
                          (setf location-uri (quri:merge-uris location-uri uri))
-                         (finalize-connection stream (gethash "connection" response-headers) uri)
+                         (finalize-connection stream (gethash "connection" response-headers) uri) ;; maybe return the original stream to the pool
                          (setf (getf args :headers)
                                (nconc `((:host . ,(uri-host location-uri))) headers))
                          (setf (getf args :max-redirects)
@@ -772,17 +787,32 @@
                                      (member method '(:get :head) :test #'eq))
                            (setf (getf args :method) :get))
                          (return-from request
-                           (apply #'request location-uri args))))))
+                           (apply #'request location-uri (if same-server-p ;; do not use user supplied stream
+                                                             args
+                                                             (progn (remf args :stream) args))))))))
                (unwind-protect
-                    (let ((body (convert-body body
+                    (let* ((keep-connection-alive (connection-keep-alive-p
+                                                   (gethash "connection" response-headers)))
+                           (body (convert-body body
                                               (gethash "content-encoding" response-headers)
                                               (gethash "content-type" response-headers)
                                               content-length
                                               transfer-encoding-p
                                               force-binary
                                               force-string
-                                              (connection-keep-alive-p
-                                               (gethash "connection" response-headers)))))
+                                              keep-connection-alive
+                                              (if (and use-connection-pool keep-connection-alive (not user-supplied-stream) (streamp body))
+                                                  (lambda (underlying-stream abort)
+                                                    (declare (ignore abort))
+                                                    (when (open-stream-p underlying-stream)
+                                                      ;; read any left overs the user may have not read (in case of errors on user side?)
+                                                      (loop while (ignore-errors (listen underlying-stream)) ;; ssl streams may close
+                                                            do (read-byte underlying-stream nil nil))
+                                                      (when (open-stream-p underlying-stream)
+                                                        (push-connection (format nil "~A://~A"
+                                                                                 (uri-scheme uri)
+                                                                                 (uri-authority uri)) underlying-stream #'close))))
+                                                  #'dexador.keep-alive-stream:keep-alive-stream-close-underlying-stream))))
                       ;; Raise an error when the HTTP response status code is 4xx or 50x.
                       (when (<= 400 status)
                         (with-restarts
@@ -791,12 +821,20 @@
                                                :headers response-headers
                                                :uri uri
                                                :method method)))
+                      ;; Have to be a little careful with the stream we return -- the user may
+                      ;; be not aware that keep-alive t without use-connection-pool can leak
+                      ;; sockets, so we wrap the returned last value so when it is garbage
+                      ;; collected, it closes the underlying socket stream.
                       (return-from request
                         (values body
                                 status
                                 response-headers
                                 uri
                                 (when (and keep-alive
-                                           (not (equalp (gethash "connection" response-headers) "close")))
-                                  stream))))
+                                           (not (equalp (gethash "connection" response-headers) "close"))
+                                           (or (not use-connection-pool) user-supplied-stream))
+                                  (or user-supplied-stream
+                                      (let ((wrapped-stream (make-usocket-wrapped-stream :stream stream)))
+                                        (trivial-garbage:finalize wrapped-stream (lambda () (close stream)))
+                                        wrapped-stream))))))
                  (finalize-connection stream (gethash "connection" response-headers) uri)))))))))

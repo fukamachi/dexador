@@ -46,6 +46,28 @@
             &key version headers basic-auth cookie-jar keep-alive use-connection-pool connect-timeout read-timeout max-redirects
               force-binary force-string want-stream
               ssl-key-file ssl-cert-file ssl-key-password stream verbose proxy insecure ca-path)
+  "Make a GET request to URI and return
+    (values body-or-stream status response-headers uri &optional opaque-socket-stream)
+
+  You may pass a real stream in as STREAM if you want us to communicate with the server via it --
+  though if any errors occur, we will open a new connection to the server.  If you have a previous
+  OPAQUE-SOCKET-STREAM you can pass that in as STREAM as well and we will re-use that connection.
+
+  OPAQUE-SOCKET-STREAM is not returned if USE-CONNECTION-POOL is T, instead we keep track of it and
+  re-use it when needed.
+
+  If WANT-STREAM is T, then a STREAM is returned as the first value.  You may read this as needed to
+  get the body of the response.  If KEEP-ALIVE and USE-CONNECTION-POOL are T, then the stream will be
+  returned to the connection pool when you have read all the data or closed the stream.
+
+  If KEEP-ALIVE is T and USE-CONNECTION-POOL is NIL, then the fifth value returned is a stream which
+  you can then pass in again using the STREAM option to re-use the active connection.  If you ignore
+  the stream, it will get closed during garbage collection.
+
+  If KEEP-ALIVE is T and USE-CONNECTION-POOL is T, then there is no fifth
+  value (OPAQUE-SOCKET-STREAM) returned, but the active connection to the host/port may be reused in
+  subsequent calls.  This removes the need for the caller to keep track of the active socket-stream
+  for subsequent calls."
   (declare (ignore version headers basic-auth cookie-jar keep-alive use-connection-pool connect-timeout read-timeout max-redirects force-binary force-string want-stream ssl-key-file ssl-cert-file ssl-key-password stream verbose proxy insecure ca-path))
   (apply #'request uri :method :get args))
 
