@@ -456,7 +456,7 @@
         (ok (eql status 200))))))
 
 (deftest keep-alive-tests
-  (testing-app "keep-alive nil"
+  (testing-app "keep-alive"
       (lambda (env)
         (declare (ignore env))
         '(200 () ("hi")))
@@ -464,7 +464,25 @@
       (ok (or (null (gethash "connection" headers))
               (string-equal (gethash "connection" headers) "keep-alive"))))
     (let ((headers (nth-value 2 (dex:get (localhost) :keep-alive nil))))
-      (ok (equalp (gethash "connection" headers) "close")))))
+      (ok (equalp (gethash "connection" headers) "close")))
+    (multiple-value-bind (b status response-headers uri opaque-socket-stream)
+        (dex:get (localhost) :keep-alive t :use-connection-pool nil)
+      (declare (ignorable b status response-headers uri opaque-socket-stream))
+      (ok (open-stream-p opaque-socket-stream) "stream is kept alive")
+      (ok (= status 200) "success")
+      (multiple-value-bind (b2 status2 response-headers2 uri2 opaque-socket-stream2)
+          (dex:get (localhost) :keep-alive t :use-connection-pool nil :stream opaque-socket-stream)
+        (declare (ignorable b2 response-headers2 uri2))
+        (ok (eql opaque-socket-stream opaque-socket-stream2) "stream is re-used")
+        (ok (open-stream-p opaque-socket-stream2) "stream is kept alive")
+        (ok (close opaque-socket-stream) "stream can be closed")
+        (ok (= status2 200) "success")
+        (multiple-value-bind (b3 status3 response-headers3 uri3 opaque-socket-stream3)
+            (dex:get (localhost) :keep-alive t :use-connection-pool nil :stream opaque-socket-stream2)
+          (declare (ignorable b3 uri3))
+          (member (gethash "connection" response-headers3) '(nil "keep-alive") :test #'equalp)
+          (ok (= status3 200) "success")
+          (ok (not (eql opaque-socket-stream3 opaque-socket-stream2)) "passing in closed stream works"))))))
 
 (deftest deflate-compression-tests
   (testing-app "deflate compression"
@@ -533,4 +551,3 @@
       (ok (string= called "host1"))
       (dexador.connection-cache:push-connection "host4" "host4-socket" (lambda (s) (declare (ignore s)) (setf called "host4")))
       (ok (string= called "host2")))))
-  
