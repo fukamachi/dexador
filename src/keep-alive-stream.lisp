@@ -43,7 +43,6 @@
   "ON-CLOSE-OR-EOF takes a single parameter, STREAM (the stream passed in here, not the
 keep-alive-stream), and should handle clean-up of it"
   (assert (xor end chunked))
-  (format t "CHUNKED IS ~A~%" chunked)
   (if chunked
       (make-instance 'keep-alive-chunked-stream :stream stream :on-close-or-eof on-close-or-eof)
       (make-instance 'keep-alive-stream :stream stream :end end :on-close-or-eof on-close-or-eof)))
