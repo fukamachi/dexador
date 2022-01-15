@@ -451,6 +451,16 @@
 (defstruct usocket-wrapped-stream
   stream)
 
+;; Forward methods the user might want to use on this.
+;; User is not meant to interact with this object except
+;; potentially to close it when they decide they don't
+;; need the :keep-alive connection anymore.
+(defmethod close ((u usocket-wrapped-stream) &key abort)
+  (close (usocket-wrapped-stream-stream u) :abort abort))
+
+(defmethod open-stream-p ((u usocket-wrapped-stream))
+  (open-stream-p (usocket-wrapped-stream-stream u)))
+
 (defun-careful request (uri &rest args
                             &key (method :get) (version 1.1)
                             content headers
@@ -469,6 +479,7 @@
                             ca-path
                             &aux
                             (proxy-uri (and proxy (quri:uri proxy)))
+                            (original-user-supplied-stream stream)
                             (user-supplied-stream (if (usocket-wrapped-stream-p stream) (usocket-wrapped-stream-stream stream) stream)))
   (declare (ignorable ssl-key-file ssl-cert-file ssl-key-password
                       connect-timeout ca-path)
@@ -514,17 +525,24 @@
                   (or (and (= (the real version) 1.0)
                            (equalp connection-header "keep-alive"))
                       (not (equalp connection-header "close")))))
+           (return-stream-to-pool (stream uri)
+             (push-connection (format nil "~A://~A"
+                                      (uri-scheme uri)
+                                      (uri-authority uri)) stream #'close))
+           (return-stream-to-pool-or-close (stream connection-header uri)
+             (if (and (not user-supplied-stream) use-connection-pool (connection-keep-alive-p connection-header))
+                 (return-stream-to-pool stream uri)
+                 (when (open-stream-p stream)
+                   (close stream))))
            (finalize-connection (stream connection-header uri)
              "If KEEP-ALIVE is in the connection-header and the user is not requesting a stream,
               we will push the connection to our connection pool if allowed, otherwise we return
               the stream back to the user who must close it."
              (unless want-stream
                (cond
-                 ((and (connection-keep-alive-p connection-header) (not user-supplied-stream) use-connection-pool)
-                  (push-connection (format nil "~A://~A"
-                                           (uri-scheme uri)
-                                           (uri-authority uri)) stream #'close))
-                 ((not keep-alive)
+                 ((and use-connection-pool (connection-keep-alive-p connection-header) (not user-supplied-stream))
+                   (return-stream-to-pool stream uri))
+                 ((not (connection-keep-alive-p connection-header))
                   (when (open-stream-p stream)
                     (close stream)))))))
     (let* ((uri (quri:uri uri))
@@ -768,7 +786,8 @@
                          (decf max-redirects)
                          (if (equalp (gethash "connection" response-headers) "close")
                              (progn
-                               (finalize-connection stream (gethash "connection" response-headers) uri) ;; maybe return the old connection to the pool
+                               (when (open-stream-p stream) ;; server demands we close connection
+                                 (close stream))
                                (setq use-connection-pool nil
                                      reusing-stream-p nil
                                      user-supplied-stream nil
@@ -777,7 +796,9 @@
                          (go retry))
                        (progn ;; this is a redirection to a different host
                          (setf location-uri (quri:merge-uris location-uri uri))
-                         (finalize-connection stream (gethash "connection" response-headers) uri) ;; maybe return the original stream to the pool
+                         ;; Close connection if it isn't from our connection pool or from the user and we aren't going to
+                         ;; pass it to our new call.
+                         (when (not same-server-p) (return-stream-to-pool-or-close stream (gethash "connection" response-headers) uri))
                          (setf (getf args :headers)
                                (nconc `((:host . ,(uri-host location-uri))) headers))
                          (setf (getf args :max-redirects)
@@ -787,7 +808,7 @@
                                      (member method '(:get :head) :test #'eq))
                            (setf (getf args :method) :get))
                          (return-from request
-                           (apply #'request location-uri (if same-server-p ;; do not use user supplied stream
+                           (apply #'request location-uri (if same-server-p
                                                              args
                                                              (progn (remf args :stream) args))))))))
                (unwind-protect
@@ -833,7 +854,12 @@
                                 (when (and keep-alive
                                            (not (equalp (gethash "connection" response-headers) "close"))
                                            (or (not use-connection-pool) user-supplied-stream))
-                                  (or user-supplied-stream
+                                  (or (and original-user-supplied-stream ;; user provided a stream
+					   (if (usocket-wrapped-stream-p original-user-supplied-stream) ;; but, it came from us
+					       (eql (usocket-wrapped-stream-stream original-user-supplied-stream) stream) ;; and we used it
+					       (eql original-user-supplied-stream stream)) ;; user provided a bare stream
+					   original-user-supplied-stream) ;; return what the user sent without wrapping it
+				      ;; already wrapped, so return the wrapper
                                       (let ((wrapped-stream (make-usocket-wrapped-stream :stream stream)))
                                         (trivial-garbage:finalize wrapped-stream (lambda () (close stream)))
                                         wrapped-stream))))))
