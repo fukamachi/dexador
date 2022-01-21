@@ -2,9 +2,7 @@ name: CI (Windows)
 
 on:
   push:
-    paths: ['*']
   pull_request:
-    paths: ['*']
   schedule:
     - cron: '0 15 * * *'
 
