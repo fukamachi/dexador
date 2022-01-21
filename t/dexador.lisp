@@ -468,8 +468,12 @@
     (multiple-value-bind (b status response-headers uri opaque-socket-stream)
         (dex:get (localhost) :keep-alive t :use-connection-pool nil)
       (declare (ignorable b status response-headers uri opaque-socket-stream))
+      #+windows
+      (ok (null opaque-socket-stream) "no socket stream")
+      #-windows
       (ok (open-stream-p opaque-socket-stream) "stream is kept alive")
       (ok (= status 200) "success")
+      #-windows
       (multiple-value-bind (b2 status2 response-headers2 uri2 opaque-socket-stream2)
           (dex:get (localhost) :keep-alive t :use-connection-pool nil :stream opaque-socket-stream)
         (declare (ignorable b2 response-headers2 uri2))
