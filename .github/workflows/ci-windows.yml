@@ -31,6 +31,10 @@ jobs:
       - name: Install Rove
         shell: bash
         run: /c/roswell/bin/ros install fukamachi/rove
+      - name: Load Dexador
+        shell: bash
+        run: |
+          /c/roswell/bin/ros -e '(handler-bind ((error (lambda (e) (uiop:print-condition-backtrace e) (uiop:quit -1)))) (ql:quickload :dexador))'
       - name: Run tests
         shell: bash
         run: |

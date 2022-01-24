@@ -424,29 +424,30 @@
   #+(or windows dexador-no-ssl)
   (error "SSL not supported. Remove :dexador-no-ssl from *features* to enable SSL.")
   #-(or windows dexador-no-ssl)
-  (cl+ssl:ensure-initialized)
-  (let ((ctx (cl+ssl:make-context :verify-mode
-                                  (if insecure
-                                      cl+ssl:+ssl-verify-none+
-                                      cl+ssl:+ssl-verify-peer+)
-                                  :verify-location
-                                  (cond
-                                    (ca-path (uiop:native-namestring ca-path))
-                                    ((probe-file *ca-bundle*) *ca-bundle*)
-                                    ;; In executable environment, perhaps *ca-bundle* doesn't exist.
-                                    (t :default))))
-        (ssl-cert-pem-p (and ssl-cert-file
-                             (ends-with-subseq ".pem" ssl-cert-file))))
-    (cl+ssl:with-global-context (ctx :auto-free-p t)
-      (when ssl-cert-pem-p
-        (cl+ssl:use-certificate-chain-file ssl-cert-file))
-      (cl+ssl:make-ssl-client-stream stream
-                                     :hostname hostname
-                                     :verify (not insecure)
-                                     :key ssl-key-file
-                                     :certificate (and (not ssl-cert-pem-p)
-                                                       ssl-cert-file)
-                                     :password ssl-key-password))))
+  (progn
+    (cl+ssl:ensure-initialized)
+    (let ((ctx (cl+ssl:make-context :verify-mode
+                                    (if insecure
+                                        cl+ssl:+ssl-verify-none+
+                                        cl+ssl:+ssl-verify-peer+)
+                                    :verify-location
+                                    (cond
+                                      (ca-path (uiop:native-namestring ca-path))
+                                      ((probe-file *ca-bundle*) *ca-bundle*)
+                                      ;; In executable environment, perhaps *ca-bundle* doesn't exist.
+                                      (t :default))))
+          (ssl-cert-pem-p (and ssl-cert-file
+                               (ends-with-subseq ".pem" ssl-cert-file))))
+      (cl+ssl:with-global-context (ctx :auto-free-p t)
+        (when ssl-cert-pem-p
+          (cl+ssl:use-certificate-chain-file ssl-cert-file))
+        (cl+ssl:make-ssl-client-stream stream
+                                       :hostname hostname
+                                       :verify (not insecure)
+                                       :key ssl-key-file
+                                       :certificate (and (not ssl-cert-pem-p)
+                                                         ssl-cert-file)
+                                       :password ssl-key-password)))))
 
 (defstruct usocket-wrapped-stream
   stream)
