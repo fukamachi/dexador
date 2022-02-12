@@ -44,7 +44,7 @@
 
 (defun get (uri &rest args
             &key version headers basic-auth cookie-jar keep-alive use-connection-pool connect-timeout read-timeout max-redirects
-              force-binary force-string want-stream
+              force-binary force-string want-stream content
               ssl-key-file ssl-cert-file ssl-key-password stream verbose proxy insecure ca-path)
   "Make a GET request to URI and return
     (values body-or-stream status response-headers uri &optional opaque-socket-stream)
@@ -67,8 +67,10 @@
   If KEEP-ALIVE is T and USE-CONNECTION-POOL is T, then there is no fifth
   value (OPAQUE-SOCKET-STREAM) returned, but the active connection to the host/port may be reused in
   subsequent calls.  This removes the need for the caller to keep track of the active socket-stream
-  for subsequent calls."
-  (declare (ignore version headers basic-auth cookie-jar keep-alive use-connection-pool connect-timeout read-timeout max-redirects force-binary force-string want-stream ssl-key-file ssl-cert-file ssl-key-password stream verbose proxy insecure ca-path))
+  for subsequent calls.
+
+  While CONTENT is allowed in a GET request the results are ill-defined and not advised."
+  (declare (ignore version headers basic-auth cookie-jar keep-alive use-connection-pool connect-timeout read-timeout max-redirects force-binary force-string want-stream ssl-key-file ssl-cert-file ssl-key-password stream verbose proxy insecure ca-path content))
   (apply #'request uri :method :get args))
 
 (defun post (uri &rest args
@@ -100,9 +102,9 @@
 
 (defun delete (uri &rest args
                &key version headers basic-auth cookie-jar keep-alive use-connection-pool connect-timeout read-timeout
-                 force-binary force-string want-stream
+                 force-binary force-string want-stream content
                  ssl-key-file ssl-cert-file ssl-key-password stream verbose proxy insecure ca-path)
-  (declare (ignore version headers basic-auth cookie-jar keep-alive use-connection-pool connect-timeout read-timeout force-binary force-string want-stream ssl-key-file ssl-cert-file ssl-key-password stream verbose proxy insecure ca-path))
+  (declare (ignore version headers basic-auth cookie-jar keep-alive use-connection-pool connect-timeout read-timeout force-binary force-string want-stream ssl-key-file ssl-cert-file ssl-key-password stream verbose proxy insecure ca-path content))
   (apply #'request uri :method :delete args))
 
 (defun fetch (uri destination &rest args
