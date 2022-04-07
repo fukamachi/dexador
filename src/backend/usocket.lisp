@@ -548,14 +548,15 @@
                     (close stream)))))))
     (let* ((uri (quri:uri uri))
            (proxy (when (http-proxy-p proxy-uri) proxy))
-           (content-type
-             (cdr (find :content-type headers :key #'car :test #'eq)))
-           (multipart-p (and (not content-type)
-                             (consp content)
-                             (find-if #'pathnamep content :key #'cdr)))
-           (form-urlencoded-p (and (not content-type)
-                                   (consp content)
-                                   (not multipart-p)))
+           (content-type (cdr (find :content-type headers :key #'car :test #'string-equal)))
+           (multipart-p (or (string= content-type "multipart/form-data")
+                            (and (not content-type)
+                                 (consp content)
+                                 (find-if #'pathnamep content :key #'cdr))))
+           (form-urlencoded-p (or (string= content-type "application/x-www-form-urlencoded")
+                                  (and (not content-type)
+                                       (consp content)
+                                       (not multipart-p))))
            (boundary (and multipart-p
                           (make-random-string 12)))
            (content (if form-urlencoded-p
@@ -615,7 +616,7 @@
                            (write-header* :proxy-authorization proxy-authorization))))))
                  (cond
                    (multipart-p
-                    (write-header* :content-type (format nil "multipart/form-data; boundary=~A" boundary))
+                    (write-header :content-type (format nil "multipart/form-data; boundary=~A" boundary))
                     (unless chunkedp
                       (write-header* :content-length
                                      (multipart-content-length content boundary))))
