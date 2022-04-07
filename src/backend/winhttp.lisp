@@ -63,19 +63,20 @@
           do (setf (gethash name hash) value)
         finally (return hash)))
 
-(defun convert-content (content)
+(defun convert-content (content multipart-p form-urlencoded-p)
   (etypecase content
     (cons
-     (if (find-if #'pathnamep content :key #'cdr)
-         (let ((boundary (make-random-string 12)))
-           (values
-            (let ((stream (make-instance 'fast-output-stream)))
-              (write-multipart-content content boundary stream)
-              (finish-output-stream stream))
-            (format nil "multipart/form-data; boundary=~A" boundary)))
-         (values
-          (babel:string-to-octets (quri:url-encode-params content))
-          "application/x-www-form-urlencoded")))
+     (cond (multipart-p
+            (let ((boundary (make-random-string 12)))
+              (values
+               (let ((stream (make-instance 'fast-output-stream)))
+                 (write-multipart-content content boundary stream)
+                 (finish-output-stream stream))
+               (format nil "multipart/form-data; boundary=~A" boundary))))
+           (form-urlencoded-p
+            (values
+             (babel:string-to-octets (quri:url-encode-params content))
+             "application/x-www-form-urlencoded"))))
     (string (values (babel:string-to-octets content)
                     "text/plain"))
     (pathname (values (read-file-into-byte-vector content)
@@ -104,15 +105,25 @@
                    stream verbose
                    proxy
                    ca-path))
-  (let ((uri (quri:uri uri))
-        (content-type
-          (find :content-type headers :key #'car :test #'string-equal))
-        (user-agent
-          (cdr (find :user-agent headers :key #'car :test #'string-equal))))
-    (multiple-value-bind (content detected-content-type) (convert-content content)
-      (when (and (null content-type)
-                 detected-content-type)
-        (setf headers (append `(("Content-Type" . ,detected-content-type)) headers)))
+  (let* ((uri (quri:uri uri))
+         (content-type
+           (find :content-type headers :key #'car :test #'string-equal))
+         (multipart-p (or (string= (cdr content-type) "multipart/form-data")
+                          (and (null (cdr content-type))
+                               (consp content)
+                               (find-if #'pathnamep content :key #'cdr))))
+         (form-urlencoded-p (or (string= (cdr content-type) "application/x-www-form-urlencoded")
+                                (and (null (cdr content-type))
+                                     (consp content)
+                                     (not multipart-p))))
+         (user-agent
+           (cdr (find :user-agent headers :key #'car :test #'string-equal))))
+    (multiple-value-bind (content detected-content-type)
+        (convert-content content multipart-p form-urlencoded-p)
+      (when detected-content-type
+        (if content-type
+            (setf (cdr (assoc :content-type headers :test #'string-equal)) detected-content-type)
+            (setf headers (append `(("Content-Type" . ,detected-content-type)) headers))))
 
       (when cookie-jar
         (let ((cookies
