@@ -47,24 +47,30 @@ keep-alive-stream), and should handle clean-up of it"
       (make-instance 'keep-alive-chunked-stream :stream stream :on-close-or-eof on-close-or-eof)
       (make-instance 'keep-alive-stream :stream stream :end end :on-close-or-eof on-close-or-eof)))
 
+(defun maybe-close (stream &optional (close-if nil))
+  "Will close the underlying stream if close-if is T (unless it is already closed).
+   If the stream is already closed or we closed it returns :EOF otherwise NIL."
+  (let ((underlying-stream (keep-alive-stream-stream stream)))
+    (cond
+      ((not underlying-stream)
+       :eof)
+      (close-if
+       (funcall (close-action stream) underlying-stream nil)
+       (setf (keep-alive-stream-stream stream) nil)
+       :eof)
+      (t nil))))
+
 (defmethod stream-read-byte ((stream keep-alive-stream))
   "Return :EOF or byte read.  When we hit EOF or finish reading our allowed content,
    call the close-action on our underlying-stream and return EOF."
   (let ((byte :eof)
         (underlying-stream (keep-alive-stream-stream stream)))
-    (labels ((maybe-close-and-return-eof (&optional (force-close nil))
-               (cond
-                 ((not underlying-stream)
-                  (return-from stream-read-byte :eof))
-                 ((or (<= (keep-alive-stream-end stream) 0) force-close)
-                  (funcall (close-action stream) underlying-stream nil)
-                  (setf (keep-alive-stream-stream stream) nil)
-                  (return-from stream-read-byte :eof)))))
-      (maybe-close-and-return-eof)
-      (setf byte (read-byte underlying-stream nil :eof))
-      (decf (keep-alive-stream-end stream) 1)
-      (maybe-close-and-return-eof (eql byte :eof))
-      byte)))
+    (or (maybe-close stream (<= (keep-alive-stream-end stream) 0))
+        (progn
+          (setf byte (read-byte underlying-stream nil :eof))
+          (decf (keep-alive-stream-end stream) 1)
+          (maybe-close stream (or (<= (keep-alive-stream-end stream) 0) (eql byte :eof)))
+          byte))))
 
 (defmethod stream-read-byte ((stream keep-alive-chunked-stream))
   "Return :EOF or byte read.  When we hit :EOF or finish reading our chunk,
@@ -72,47 +78,44 @@ keep-alive-stream), and should handle clean-up of it"
   (let ((byte :eof)
         (underlying-stream (keep-alive-stream-stream stream)))
     (with-slots (state) stream
-      (labels ((maybe-close-and-return (&optional (force-close nil))
-                 (cond
-                   ((not underlying-stream)
-                    (return-from stream-read-byte :eof))
-                   ((or force-close (= state 3))
-                    (funcall (close-action stream) underlying-stream nil)
-                    (setf (keep-alive-stream-stream stream) nil)
-                    (return-from stream-read-byte byte)))))
-        (maybe-close-and-return)
-        (setf byte (read-byte (keep-alive-stream-stream stream) nil :eof))
-        (maybe-close-and-return (eql byte :eof))
-        (ecase state
-          (-1
-           (when (= byte (char-code #\Return))
-             (setf state 0)))
-          ;; Read CR
-          (0
-           (if (= byte (char-code #\Newline))
-               (setf state 1)
-               (setf state -1)))
-          ;; Read CRLF
-          (1
-           (if (= byte (char-code #\Return))
-               (setf state 2)
-               (setf state -1)))
-          ;; Read CRLFCR
-          (2
-           (if (= byte (char-code #\Newline))
-               (setf state 3)
-               (setf state -1))))
-        (maybe-close-and-return)
-        byte))))
+      (or (maybe-close stream (= state 3)) ;; already at EOF
+          (progn
+            (setf byte (read-byte (keep-alive-stream-stream stream) nil :eof))
+            (or
+             (maybe-close stream (or (= state 3) (eql byte :eof)))
+             (ecase state
+               (-1
+                (when (= byte (char-code #\Return))
+                  (setf state 0)))
+               ;; Read CR
+               (0
+                (if (= byte (char-code #\Newline))
+                    (setf state 1)
+                    (setf state -1)))
+               ;; Read CRLF
+               (1
+                (if (= byte (char-code #\Return))
+                    (setf state 2)
+                    (setf state -1)))
+               ;; Read CRLFCR
+               (2
+                (if (= byte (char-code #\Newline))
+                    (setf state 3)
+                    (setf state -1)))))
+            (maybe-close stream (= state 3))
+            byte)))))
 
 (defmethod stream-read-sequence ((stream keep-alive-stream) sequence start end &key)
   (declare (optimize speed))
-  (let* ((to-read (min (- end start) (keep-alive-stream-end stream)))
-         (n (read-sequence sequence (keep-alive-stream-stream stream)
-                           :start start
-                           :end (+ start to-read))))
-    (decf (keep-alive-stream-end stream) (- n start))
-    n))
+  (if (null (keep-alive-stream-stream stream)) ;; we already closed it
+      0
+      (let* ((to-read (min (- end start) (keep-alive-stream-end stream)))
+             (n (read-sequence sequence (keep-alive-stream-stream stream)
+                               :start start
+                               :end (+ start to-read))))
+        (decf (keep-alive-stream-end stream) (- n start))
+        (maybe-close stream (<= (keep-alive-stream-end stream) 0))
+        n)))
 
 (defmethod stream-read-sequence ((stream keep-alive-chunked-stream) sequence start end &key)
   (declare (optimize speed))
