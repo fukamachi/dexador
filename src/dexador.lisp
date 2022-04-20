@@ -122,9 +122,9 @@
       (let ((body (apply #'dex:get uri :want-stream t :force-binary t
                          (remove-from-plist args :if-exists))))
         (alexandria:copy-stream body out)
-        ;; Nominally the body gets closed, but if keep-alive is nil we need to explicitly do it,
-        ;; and it doesn't hurt to do it twice.
-        (close body)))))
+        ;; Nominally the body gets closed, but if keep-alive is nil we need to explicitly do it.
+        (when (open-stream-p body)
+          (close body))))))
 
 (defun ignore-and-continue (e)
   (let ((restart (find-restart 'ignore-and-continue e)))
