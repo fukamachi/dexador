@@ -58,7 +58,8 @@
 
   If WANT-STREAM is T, then a STREAM is returned as the first value.  You may read this as needed to
   get the body of the response.  If KEEP-ALIVE and USE-CONNECTION-POOL are T, then the stream will be
-  returned to the connection pool when you have read all the data or closed the stream.
+  returned to the connection pool when you have read all the data or closed the stream. If KEEP-ALIVE
+  is NIL then you are responsible for closing the stream when done.
 
   If KEEP-ALIVE is T and USE-CONNECTION-POOL is NIL, then the fifth value returned is a stream which
   you can then pass in again using the STREAM option to re-use the active connection.  If you ignore
@@ -120,7 +121,10 @@
                          :if-does-not-exist :create)
       (let ((body (apply #'dex:get uri :want-stream t :force-binary t
                          (remove-from-plist args :if-exists))))
-        (alexandria:copy-stream body out)))))
+        (alexandria:copy-stream body out)
+        ;; Nominally the body gets closed, but if keep-alive is nil we need to explicitly do it.
+        (when (open-stream-p body)
+          (close body))))))
 
 (defun ignore-and-continue (e)
   (let ((restart (find-restart 'ignore-and-continue e)))
