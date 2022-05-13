@@ -133,7 +133,7 @@ Similar to flexi-input-stream, except this uses Babel for decoding."))
             last-char-size 0))
     nil))
 
-#+(or abcl ecl)
+#+(or abcl clasp ecl)
 (defmethod stream-read-sequence ((stream decoding-stream) sequence start end &key)
   (loop for i from start to end
         for char = (stream-read-char stream)
@@ -142,7 +142,7 @@ Similar to flexi-input-stream, except this uses Babel for decoding."))
         else do (setf (aref sequence i) char)
         finally (return end)))
 
-#+ecl
+#+(or clasp ecl)
 (defmethod stream-read-byte ((stream decoding-stream))
   (with-slots (last-char last-char-size) stream
     (setf last-char #\Nul

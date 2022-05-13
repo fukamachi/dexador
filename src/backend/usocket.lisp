@@ -491,7 +491,7 @@
                  (let* ((con-uri (quri:uri (or proxy uri)))
                         (connection (usocket:socket-connect (uri-host con-uri)
                                                             (uri-port con-uri)
-                                                            #-(or ecl clisp allegro) :timeout #-(or ecl clisp allegro) connect-timeout
+                                                            #-(or ecl clasp clisp allegro) :timeout #-(or ecl clasp clisp allegro) connect-timeout
                                                             :element-type '(unsigned-byte 8)))
                         (stream
                           (usocket:socket-stream connection))
