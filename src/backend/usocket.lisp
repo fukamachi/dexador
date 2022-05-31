@@ -314,17 +314,6 @@
             finally
                (boundary-line t)))))
 
-(defmacro with-restarts (&body body)
-  `(restart-case (progn ,@body)
-     (retry-request ()
-       :report "Retry the same request."
-       (setf use-connection-pool nil
-             reusing-stream-p nil
-             stream (make-new-connection uri))
-       (go retry))
-     (ignore-and-continue ()
-       :report "Ignore the error and continue.")))
-
 (defun build-cookie-headers (uri cookie-jar)
   (with-header-output (buffer)
     (let ((cookies (cookie-jar-host-cookies cookie-jar (uri-host uri) (or (uri-path uri) "/")
@@ -567,7 +556,7 @@
                             (steal-connection (format nil "~A://~A"
                                                       (uri-scheme uri)
                                                       (uri-authority uri))))))
-           (reusing-stream-p (not (null stream)))
+           (reusing-stream-p (not (null stream))) ;; user provided or from connection-pool
            (stream (or stream
                        (make-new-connection uri)))
            (content-length
@@ -658,31 +647,28 @@
                          do (write-header name value)))))
            (cookie-headers (and cookie-jar
                                 (build-cookie-headers uri cookie-jar))))
-      (macrolet ((with-retrying (&body body)
-                   `(if reusing-stream-p
+      (macrolet ((maybe-try-again-without-reusing-stream (&optional (force nil))
+                   `(progn ;; retrying by go retry avoids generating the header, parsing, etc.
+                      (when (open-stream-p stream)
+                        (close stream :abort t))
+                      (when ,(or force 'reusing-stream-p)
+                        (setf reusing-stream-p nil
+                              user-supplied-stream nil
+                              stream (make-new-connection uri))
+                        (go retry))))
+                 (try-again-without-reusing-stream ()
+                   `(maybe-try-again-without-reusing-stream t))
+                 (with-retrying (&body body)
+                   `(restart-case
                         (handler-bind ((error
                                          (lambda (e)
                                            (declare (ignorable e))
-                                           (when (open-stream-p stream)
-                                             (close stream :abort t))
-                                           (when reusing-stream-p
-                                             (setf use-connection-pool nil
-                                                   reusing-stream-p nil
-                                                   user-supplied-stream nil
-                                                   stream (make-new-connection uri))
-                                             (go retry)))))
+                                           (maybe-try-again-without-reusing-stream))))
                           ,@body)
-                        (restart-case
-                            (handler-bind ((error
-                                             (lambda (e)
-                                               (declare (ignorable e))
-                                               (when (open-stream-p stream)
-                                                 (close stream :abort t)))))
-                              ,@body)
-                          (retry-request ()
-                            :report "Retry the same request."
-                            (return-from request
-                              (apply #'request uri :use-connection-pool nil args)))))))
+                      (retry-request () :report "Retry the same request."
+                        (return-from request (apply #'request uri args)))
+                      (ignore-and-continue () :report "Ignore the error and continue."
+                        (try-again-without-reusing-stream)))))
         (tagbody
          retry
            (with-retrying
@@ -726,19 +712,12 @@
                                       (string (parse-integer content-length))
                                       (integer content-length))))
                (when (= status 0)
-                 (unless reusing-stream-p
-                   ;; There's nothing we can do.
-                   (with-restarts
-                     (http-request-failed status
-                                          :body body
-                                          :headers headers
-                                          :uri uri
-                                          :method method)))
-                 (setf use-connection-pool nil
-                       reusing-stream-p nil
-                       user-supplied-stream nil
-                       stream (make-new-connection uri))
-                 (go retry))
+                 (with-retrying
+                   (http-request-failed status
+                                        :body body
+                                        :headers headers
+                                        :uri uri
+                                        :method method)))
                (when verbose
                  (print-verbose-data :outgoing first-line-data headers-data cookie-headers +crlf+)
                  (print-verbose-data :incoming response-headers-data))
@@ -787,15 +766,10 @@
                            (setq cookie-headers (build-cookie-headers uri cookie-jar)))
                          (decf max-redirects)
                          (if (equalp (gethash "connection" response-headers) "close")
+                             (try-again-without-reusing-stream)
                              (progn
-                               (when (open-stream-p stream) ;; server demands we close connection
-                                 (close stream))
-                               (setq use-connection-pool nil
-                                     reusing-stream-p nil
-                                     user-supplied-stream nil
-                                     stream (make-new-connection uri)))
-                             (setq reusing-stream-p t))
-                         (go retry))
+                               (setq reusing-stream-p t)
+                               (go retry))))
                        (progn ;; this is a redirection to a different host
                          (setf location-uri (quri:merge-uris location-uri uri))
                          ;; Close connection if it isn't from our connection pool or from the user and we aren't going to
@@ -838,7 +812,7 @@
                                                   #'dexador.keep-alive-stream:keep-alive-stream-close-underlying-stream))))
                       ;; Raise an error when the HTTP response status code is 4xx or 50x.
                       (when (<= 400 status)
-                        (with-restarts
+                        (with-retrying
                           (http-request-failed status
                                                :body body
                                                :headers response-headers
