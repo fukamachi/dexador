@@ -158,7 +158,9 @@
           evicted-element eviction-callback element-was-evicted)
       (when pool
         (loop for count from 0
-              do (setf (values evicted-element eviction-callback element-was-evicted) (evict-tail pool))
+              do (setf (values evicted-element eviction-callback element-was-evicted)
+                       (with-lock (lru-pool-lock pool)
+                         (evict-tail pool)))
               do (when eviction-callback (funcall eviction-callback evicted-element))
               while element-was-evicted)))))
 
