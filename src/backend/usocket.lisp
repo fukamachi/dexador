@@ -816,10 +816,11 @@
                                                :headers response-headers
                                                :uri uri
                                                :method method)))
-                      ;; Have to be a little careful with the stream we return -- the user may
-                      ;; be not aware that keep-alive t without use-connection-pool can leak
+                      ;; Have to be a little careful with the fifth value stream we return --
+                      ;; the user may be not aware that keep-alive t without use-connection-pool can leak
                       ;; sockets, so we wrap the returned last value so when it is garbage
-                      ;; collected, it closes the underlying socket stream.
+                      ;; collected it gets closed.  If the user is getting a stream back as BODY,
+                      ;; then we instead add a finalizer to that stream to close it when garbage collected
                       (return-from request
                         (values body
                                 status
@@ -833,8 +834,11 @@
 					       (eql (usocket-wrapped-stream-stream original-user-supplied-stream) stream) ;; and we used it
 					       (eql original-user-supplied-stream stream)) ;; user provided a bare stream
 					   original-user-supplied-stream) ;; return what the user sent without wrapping it
-				      ;; already wrapped, so return the wrapper
-                                      (let ((wrapped-stream (make-usocket-wrapped-stream :stream stream)))
-                                        (trivial-garbage:finalize wrapped-stream (lambda () (close stream)))
-                                        wrapped-stream))))))
+                                      (if want-stream ;; add a finalizer to the body to close the stream
+                                          (progn
+                                            (trivial-garbage:finalize body (lambda () (close stream)))
+                                            stream)
+                                          (let ((wrapped-stream (make-usocket-wrapped-stream :stream stream)))
+                                            (trivial-garbage:finalize wrapped-stream (lambda () (close stream)))
+                                            wrapped-stream)))))))
                  (finalize-connection stream (gethash "connection" response-headers) uri)))))))))
