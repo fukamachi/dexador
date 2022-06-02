@@ -223,22 +223,20 @@
     (boundary-line)))
 
 (defun convert-body (body content-encoding content-type content-length chunkedp force-binary force-string keep-alive-p on-close)
-  (when (and (streamp body)
-             keep-alive-p)
+  (when (streamp body)
     (cond
+      ((and keep-alive-p chunkedp)
+       (setf body (make-keep-alive-stream body :chunked-stream
+                                          (let ((chunked-stream (chunga:make-chunked-stream body)))
+                                            (setf (chunga:chunked-stream-input-chunking-p chunked-stream) t)
+                                            chunked-stream) :on-close-or-eof on-close)))
+      ((and keep-alive-p content-length)
+       (setf body (make-keep-alive-stream body :end content-length :on-close-or-eof on-close)))
       (chunkedp
-       (setf body
-             (make-keep-alive-stream body :chunked t :on-close-or-eof on-close)))
-      (content-length
-       (setf body
-             (make-keep-alive-stream body :end content-length :on-close-or-eof on-close)))))
-  (let ((body (decompress-body content-encoding
-                               (if (and (streamp body)
-                                        chunkedp)
-                                   (let ((chunked-stream (chunga:make-chunked-stream body)))
-                                     (setf (chunga:chunked-stream-input-chunking-p chunked-stream) t)
-                                     chunked-stream)
-                                   body))))
+       (let ((chunked-stream (chunga:make-chunked-stream body)))
+         (setf (chunga:chunked-stream-input-chunking-p chunked-stream) t)
+         (setf body chunked-stream)))))
+  (let ((body (decompress-body content-encoding body)))
     (if force-binary
         body
         (decode-body content-type body
