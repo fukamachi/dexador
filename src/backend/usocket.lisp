@@ -223,22 +223,20 @@
     (boundary-line)))
 
 (defun convert-body (body content-encoding content-type content-length chunkedp force-binary force-string keep-alive-p on-close)
-  (when (and (streamp body)
-             keep-alive-p)
+  (when (streamp body)
     (cond
+      ((and keep-alive-p chunkedp)
+       (setf body (make-keep-alive-stream body :chunked-stream
+                                          (let ((chunked-stream (chunga:make-chunked-stream body)))
+                                            (setf (chunga:chunked-stream-input-chunking-p chunked-stream) t)
+                                            chunked-stream) :on-close-or-eof on-close)))
+      ((and keep-alive-p content-length)
+       (setf body (make-keep-alive-stream body :end content-length :on-close-or-eof on-close)))
       (chunkedp
-       (setf body
-             (make-keep-alive-stream body :chunked t :on-close-or-eof on-close)))
-      (content-length
-       (setf body
-             (make-keep-alive-stream body :end content-length :on-close-or-eof on-close)))))
-  (let ((body (decompress-body content-encoding
-                               (if (and (streamp body)
-                                        chunkedp)
-                                   (let ((chunked-stream (chunga:make-chunked-stream body)))
-                                     (setf (chunga:chunked-stream-input-chunking-p chunked-stream) t)
-                                     chunked-stream)
-                                   body))))
+       (let ((chunked-stream (chunga:make-chunked-stream body)))
+         (setf (chunga:chunked-stream-input-chunking-p chunked-stream) t)
+         (setf body chunked-stream)))))
+  (let ((body (decompress-body content-encoding body)))
     (if force-binary
         body
         (decode-body content-type body
@@ -818,10 +816,11 @@
                                                :headers response-headers
                                                :uri uri
                                                :method method)))
-                      ;; Have to be a little careful with the stream we return -- the user may
-                      ;; be not aware that keep-alive t without use-connection-pool can leak
+                      ;; Have to be a little careful with the fifth value stream we return --
+                      ;; the user may be not aware that keep-alive t without use-connection-pool can leak
                       ;; sockets, so we wrap the returned last value so when it is garbage
-                      ;; collected, it closes the underlying socket stream.
+                      ;; collected it gets closed.  If the user is getting a stream back as BODY,
+                      ;; then we instead add a finalizer to that stream to close it when garbage collected
                       (return-from request
                         (values body
                                 status
@@ -835,8 +834,11 @@
 					       (eql (usocket-wrapped-stream-stream original-user-supplied-stream) stream) ;; and we used it
 					       (eql original-user-supplied-stream stream)) ;; user provided a bare stream
 					   original-user-supplied-stream) ;; return what the user sent without wrapping it
-				      ;; already wrapped, so return the wrapper
-                                      (let ((wrapped-stream (make-usocket-wrapped-stream :stream stream)))
-                                        (trivial-garbage:finalize wrapped-stream (lambda () (close stream)))
-                                        wrapped-stream))))))
+                                      (if want-stream ;; add a finalizer to the body to close the stream
+                                          (progn
+                                            (trivial-garbage:finalize body (lambda () (close stream)))
+                                            stream)
+                                          (let ((wrapped-stream (make-usocket-wrapped-stream :stream stream)))
+                                            (trivial-garbage:finalize wrapped-stream (lambda () (close stream)))
+                                            wrapped-stream)))))))
                  (finalize-connection stream (gethash "connection" response-headers) uri)))))))))

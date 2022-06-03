@@ -38,11 +38,11 @@
 (defun make-connection-pool (&optional (max-active-connections *max-active-connections*))
   (make-lru-pool :hash-table (make-hash-table :test 'equal) :max-elts max-active-connections))
 
+(defvar *connection-pool* nil)
+
 (defun make-new-connection-pool (&optional (max-active-connections *max-active-connections*))
   (clear-connection-pool)
   (setf *connection-pool* (make-connection-pool max-active-connections)))
-
-(defvar *connection-pool* nil)
 
 (defun get-from-lru-pool (lru-pool key)
   "Takes an element from the LRU-POOL matching KEY.  Must be called with LRU-POOL-LOCK held.

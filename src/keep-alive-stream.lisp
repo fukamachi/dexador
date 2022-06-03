@@ -35,16 +35,14 @@
     (close underlying-stream :abort abort)))
 
 (defclass keep-alive-chunked-stream (keep-alive-stream)
-  ((state :type fixnum
-          :initarg :state
-          :initform -1)))
+  ((chunga-stream :initarg :chunga-stream :accessor chunga-stream)))
 
-(defun make-keep-alive-stream (stream &key end chunked (on-close-or-eof #'keep-alive-stream-close-underlying-stream))
+(defun make-keep-alive-stream (stream &key end chunked-stream (on-close-or-eof #'keep-alive-stream-close-underlying-stream))
   "ON-CLOSE-OR-EOF takes a single parameter, STREAM (the stream passed in here, not the
 keep-alive-stream), and should handle clean-up of it"
-  (assert (xor end chunked))
-  (if chunked
-      (make-instance 'keep-alive-chunked-stream :stream stream :on-close-or-eof on-close-or-eof)
+  (assert (xor end chunked-stream))
+  (if chunked-stream
+      (make-instance 'keep-alive-chunked-stream :stream stream :chunga-stream chunked-stream :on-close-or-eof on-close-or-eof)
       (make-instance 'keep-alive-stream :stream stream :end end :on-close-or-eof on-close-or-eof)))
 
 (defun maybe-close (stream &optional (close-if nil))
@@ -75,35 +73,15 @@ keep-alive-stream), and should handle clean-up of it"
 (defmethod stream-read-byte ((stream keep-alive-chunked-stream))
   "Return :EOF or byte read.  When we hit :EOF or finish reading our chunk,
    call the close-action on our underlying-stream and return :EOF"
-  (let ((byte :eof)
-        (underlying-stream (keep-alive-stream-stream stream)))
-    (with-slots (state) stream
-      (or (maybe-close stream (= state 3)) ;; already at EOF
-          (progn
-            (setf byte (read-byte (keep-alive-stream-stream stream) nil :eof))
-            (or
-             (maybe-close stream (or (= state 3) (eql byte :eof)))
-             (ecase state
-               (-1
-                (when (= byte (char-code #\Return))
-                  (setf state 0)))
-               ;; Read CR
-               (0
-                (if (= byte (char-code #\Newline))
-                    (setf state 1)
-                    (setf state -1)))
-               ;; Read CRLF
-               (1
-                (if (= byte (char-code #\Return))
-                    (setf state 2)
-                    (setf state -1)))
-               ;; Read CRLFCR
-               (2
-                (if (= byte (char-code #\Newline))
-                    (setf state 3)
-                    (setf state -1)))))
-            (maybe-close stream (= state 3))
-            byte)))))
+  (or (maybe-close stream)
+      (if (chunga:chunked-stream-input-chunking-p (chunga-stream stream))
+          (let ((byte (read-byte (chunga-stream stream) nil :eof)))
+            (if (eql byte :eof)
+                (prog1
+                    byte
+                  (maybe-close stream t))
+                byte))
+          (or (maybe-close stream t) :eof))))
 
 (defmethod stream-read-sequence ((stream keep-alive-stream) sequence start end &key)
   (declare (optimize speed))
@@ -119,13 +97,17 @@ keep-alive-stream), and should handle clean-up of it"
 
 (defmethod stream-read-sequence ((stream keep-alive-chunked-stream) sequence start end &key)
   (declare (optimize speed))
-  (loop for i from start below end
-        for byte = (read-byte stream nil nil)
-        if byte
-          do (setf (aref sequence i) byte)
-        else
-          do (return (max 0 (1- i)))
-        finally (return i)))
+  (if (null (keep-alive-stream-stream stream)) ;; we already closed it
+      0
+      (if (chunga:chunked-stream-input-chunking-p (chunga-stream stream))
+          (prog1
+              (let ((num-read (read-sequence sequence (chunga-stream stream) :start start :end end)))
+                num-read)
+            (maybe-close stream (not (chunga:chunked-stream-input-chunking-p (chunga-stream stream)))))
+          0)))
+
+(defmethod stream-element-type ((stream keep-alive-chunked-stream))
+  (stream-element-type (chunga-stream stream)))
 
 (defmethod stream-element-type ((stream keep-alive-stream))
   '(unsigned-byte 8))
