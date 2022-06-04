@@ -205,6 +205,10 @@ You can connect via SOCKS5 proxy.
 (dex:get "https://www.facebookcorewwwi.onion/" :proxy "socks5://127.0.0.1:9150")
 ```
 
+You can set the default proxy by setting
+```dex:*default-proxy*```
+which defaults to the value of the environment variable HTTPS_PROXY or HTTP_PROXY
+
 ## Functions
 
 All functions take similar arguments.
@@ -239,11 +243,11 @@ All functions take similar arguments.
 - `ssl-key-file`, `ssl-cert-file`, `ssl-key-password`
   - for HTTPS connection
 - `stream`
-  - The stream to write an HTTP request. This is a way to reuse a connection and commonly used with `:keep-alive T`.  This allows the caller to do connection pooling, etc.  It is easier to just use `:use-connection-pool t` and let the dexador internals take care of this for you (only supported for usocket backends).
+  - The stream to write an HTTP request. This is a way to reuse a connection and commonly used with `:keep-alive T`.  This allows the caller to do connection pooling, etc.  It is easier to just use `:use-connection-pool t`, which is the default, and let the dexador internals take care of this for you (only supported for usocket backends).
 - `verbose` (boolean)
   - This option is for debugging. If this is `T`, it dumps the HTTP request headers.
 - `proxy` (string)
-  - for use proxy.
+  - for use proxy. defaults to the value of `dex:*default-proxy*` which defaults to the value of environment variables HTTPS_PROXY or HTTP_PROXY.  Not supported on windows currently
 - `use-connection-pool` (boolean)
   - When combined with `:keep-alive t`, will internally cache the socket connection to web servers to avoid having to open new ones.  This is compatible with `:want-stream t` (when you close the returned stream or it is garbage collected the connection will be returned to the pool).  If you pass in a stream with `:stream` then the connection pool is not used (unless there is a redirect to a new web server).  This is not supported when using the WINHTTP backend.
 
