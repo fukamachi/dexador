@@ -250,10 +250,12 @@ All functions take similar arguments.
 ### \[Function\] request
 
 ```common-lisp
-(dex:request uri &key method version content headers basic-auth cookie-jar connect-timeout read-timeout
-                   (keep-alive t) (use-connection-pool t) (max-redirects 5)
-                   ssl-key-file ssl-cert-file ssl-key-password
-                   stream verbose force-binary want-stream proxy)
+(dex:request uri &key (method get) (version 1.1) content headers
+             basic-auth cookie-jar (connect-timeout *default-connect-timeout*)
+             (read-timeout *default-read-timeout*) (keep-alive t) (use-connection-pool t)
+             (max-redirects 5) ssl-key-file ssl-cert-file ssl-key-password stream
+             (verbose *verbose*) force-binary force-string want-stream proxy
+             (insecure *not-verify-ssl*) ca-path)
 ;=> body
 ;   status
 ;   response-headers
@@ -278,49 +280,59 @@ This function signals `http-request-failed` when the HTTP status code is 4xx or 
 ### \[Function\] get
 
 ```common-lisp
-(dex:get uri &key version headers basic-auth cookie-jar keep-alive connect-timeout read-timeout max-redirects force-binary want-stream
-               ssl-key-file ssl-cert-file ssl-key-password
-               stream verbose proxy)
+(dex:get uri &key version headers basic-auth cookie-jar keep-alive
+         use-connection-pool connect-timeout read-timeout max-redirects
+         force-binary force-string want-stream ssl-key-file
+         ssl-cert-file ssl-key-password stream verbose proxy insecure
+         ca-path)
 ```
 
 ### \[Function\] post
 
 ```common-lisp
-(dex:post uri &key version headers content cookie-jar keep-alive connect-timeout read-timeout force-binary want-stream
-                ssl-key-file ssl-cert-file ssl-key-password
-                stream verbose proxy)
+(dex:post uri &key version content headers basic-auth cookie-jar
+          keep-alive use-connection-pool connect-timeout read-timeout
+          force-binary force-string want-stream ssl-key-file
+          ssl-cert-file ssl-key-password stream verbose proxy insecure
+          ca-path)
 ```
 
 ### \[Function\] head
 
 ```common-lisp
-(dex:head uri &key version headers cookie-jar connect-timeout read-timeout max-redirects
-                ssl-key-file ssl-cert-file ssl-key-password
-                stream verbose proxy)
+(dex:head uri &key version headers basic-auth cookie-jar connect-timeout
+          read-timeout max-redirects ssl-key-file ssl-cert-file
+          ssl-key-password stream verbose proxy insecure ca-path)
 ```
 
 ### \[Function\] put
 
 ```common-lisp
-(dex:put uri &key version headers content cookie-jar keep-alive connect-timeout read-timeout force-binary want-stream
-               ssl-key-file ssl-cert-file ssl-key-password
-               stream verbose proxy)
+(dex:put uri &key version content headers basic-auth cookie-jar
+         keep-alive use-connection-pool connect-timeout read-timeout
+         force-binary force-string want-stream ssl-key-file
+         ssl-cert-file ssl-key-password stream verbose proxy insecure
+         ca-path)
 ```
 
 ### \[Function\] patch
 
 ```common-lisp
-(dex:patch uri &key version headers content cookie-jar keep-alive connect-timeout read-timeout force-binary want-stream
-                 ssl-key-file ssl-cert-file ssl-key-password
-                 stream verbose proxy)
+(dex:patch uri &key version content headers basic-auth cookie-jar
+           keep-alive use-connection-pool connect-timeout read-timeout
+           force-binary force-string want-stream ssl-key-file
+           ssl-cert-file ssl-key-password stream verbose proxy insecure
+           ca-path)
 ```
 
 ### \[Function\] delete
 
 ```common-lisp
-(dex:delete uri &key version headers cookie-jar keep-alive connect-timeout read-timeout force-binary want-stream
-                  ssl-key-file ssl-cert-file ssl-key-password
-                  stream verbose proxy)
+(dex:delete uri &key version headers basic-auth cookie-jar keep-alive
+            use-connection-pool connect-timeout read-timeout
+            force-binary force-string want-stream ssl-key-file
+            ssl-cert-file ssl-key-password stream verbose proxy insecure
+            ca-path)
 ```
 
 ### \[Function\] fetch
@@ -328,7 +340,7 @@ This function signals `http-request-failed` when the HTTP status code is 4xx or 
 Send a GET request to `URI` and write the response body to the `DESTINATION`.
 
 ```common-lisp
-(dex:fetch uri destination &key if-exists verbose proxy)
+(dex:fetch uri destination &key (if-exists error) verbose proxy insecure)
 ```
 
 ## Benchmark
