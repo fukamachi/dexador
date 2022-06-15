@@ -227,33 +227,37 @@ All functions take similar arguments.
 - `read-timeout` (fixnum)
   - The seconds to timeout until the whole HTTP body read. The default is `10`, the value of `*default-read-timeout*`.
 - `keep-alive` (boolean)
-  - A flag if the connection keep connected even after the HTTP request. The default is `NIL`.
+  - A flag if the connection keep connected even after the HTTP request. The default is `T`.
 - `use-connection-pool` (boolean)
-  - A flag if use a connection pool.
+  - When combined with `:keep-alive t`, will internally cache the socket connection to web servers to avoid having to open new ones.  This is compatible with `:want-stream t` (when you close the returned stream or it is garbage collected the connection will be returned to the pool).  If you pass in a stream with `:stream` then the connection pool is not used (unless there is a redirect to a new web server).  This is not supported when using the WINHTTP backend. The default is `T`.
 - `max-redirects` (fixnum)
   - The limit of redirections. The default is `5`. If the redirection exceeds the limit, functions return the last response (not raise a condition).
-- `force-binary` (boolean)
-  - A flag for suppressing auto-decoding of the response body.
-- `want-stream` (boolean)
-  - A flag to get the response body as a stream.
 - `ssl-key-file`, `ssl-cert-file`, `ssl-key-password`
   - for HTTPS connection
 - `stream`
   - The stream to write an HTTP request. This is a way to reuse a connection and commonly used with `:keep-alive T`.  This allows the caller to do connection pooling, etc.  It is easier to just use `:use-connection-pool t` and let the dexador internals take care of this for you (only supported for usocket backends).
 - `verbose` (boolean)
-  - This option is for debugging. If this is `T`, it dumps the HTTP request headers.
+  - This option is for debugging. When `T`, it dumps the HTTP request headers.
+- `force-binary` (boolean)
+  - A flag for suppressing auto-decoding of the response body.
+<!-- - `force-string` -->
+- `want-stream` (boolean)
+  - A flag to get the response body as a stream.
 - `proxy` (string)
   - for use proxy.
-- `use-connection-pool` (boolean)
-  - When combined with `:keep-alive t`, will internally cache the socket connection to web servers to avoid having to open new ones.  This is compatible with `:want-stream t` (when you close the returned stream or it is garbage collected the connection will be returned to the pool).  If you pass in a stream with `:stream` then the connection pool is not used (unless there is a redirect to a new web server).  This is not supported when using the WINHTTP backend.
+- `insecure` (boolean)
+  - To bypass SSL certificate verification (use at your own risk). The default is `NIL`, the value of `*not-verify-ssl*`.
+<!-- - `ca-path` -->
 
 ### \[Function\] request
 
 ```common-lisp
-(dex:request uri &key method version content headers basic-auth cookie-jar connect-timeout read-timeout
-                   (keep-alive t) (use-connection-pool t) (max-redirects 5)
-                   ssl-key-file ssl-cert-file ssl-key-password
-                   stream verbose force-binary want-stream proxy)
+(dex:request uri &key (method get) (version 1.1) content headers
+             basic-auth cookie-jar (connect-timeout *default-connect-timeout*)
+             (read-timeout *default-read-timeout*) (keep-alive t) (use-connection-pool t)
+             (max-redirects 5) ssl-key-file ssl-cert-file ssl-key-password stream
+             (verbose *verbose*) force-binary force-string want-stream proxy
+             (insecure *not-verify-ssl*) ca-path)
 ;=> body
 ;   status
 ;   response-headers
@@ -278,49 +282,59 @@ This function signals `http-request-failed` when the HTTP status code is 4xx or 
 ### \[Function\] get
 
 ```common-lisp
-(dex:get uri &key version headers basic-auth cookie-jar keep-alive connect-timeout read-timeout max-redirects force-binary want-stream
-               ssl-key-file ssl-cert-file ssl-key-password
-               stream verbose proxy)
+(dex:get uri &key version headers basic-auth cookie-jar keep-alive
+         use-connection-pool connect-timeout read-timeout max-redirects
+         force-binary force-string want-stream ssl-key-file
+         ssl-cert-file ssl-key-password stream verbose proxy insecure
+         ca-path)
 ```
 
 ### \[Function\] post
 
 ```common-lisp
-(dex:post uri &key version headers content cookie-jar keep-alive connect-timeout read-timeout force-binary want-stream
-                ssl-key-file ssl-cert-file ssl-key-password
-                stream verbose proxy)
+(dex:post uri &key version content headers basic-auth cookie-jar
+          keep-alive use-connection-pool connect-timeout read-timeout
+          force-binary force-string want-stream ssl-key-file
+          ssl-cert-file ssl-key-password stream verbose proxy insecure
+          ca-path)
 ```
 
 ### \[Function\] head
 
 ```common-lisp
-(dex:head uri &key version headers cookie-jar connect-timeout read-timeout max-redirects
-                ssl-key-file ssl-cert-file ssl-key-password
-                stream verbose proxy)
+(dex:head uri &key version headers basic-auth cookie-jar connect-timeout
+          read-timeout max-redirects ssl-key-file ssl-cert-file
+          ssl-key-password stream verbose proxy insecure ca-path)
 ```
 
 ### \[Function\] put
 
 ```common-lisp
-(dex:put uri &key version headers content cookie-jar keep-alive connect-timeout read-timeout force-binary want-stream
-               ssl-key-file ssl-cert-file ssl-key-password
-               stream verbose proxy)
+(dex:put uri &key version content headers basic-auth cookie-jar
+         keep-alive use-connection-pool connect-timeout read-timeout
+         force-binary force-string want-stream ssl-key-file
+         ssl-cert-file ssl-key-password stream verbose proxy insecure
+         ca-path)
 ```
 
 ### \[Function\] patch
 
 ```common-lisp
-(dex:patch uri &key version headers content cookie-jar keep-alive connect-timeout read-timeout force-binary want-stream
-                 ssl-key-file ssl-cert-file ssl-key-password
-                 stream verbose proxy)
+(dex:patch uri &key version content headers basic-auth cookie-jar
+           keep-alive use-connection-pool connect-timeout read-timeout
+           force-binary force-string want-stream ssl-key-file
+           ssl-cert-file ssl-key-password stream verbose proxy insecure
+           ca-path)
 ```
 
 ### \[Function\] delete
 
 ```common-lisp
-(dex:delete uri &key version headers cookie-jar keep-alive connect-timeout read-timeout force-binary want-stream
-                  ssl-key-file ssl-cert-file ssl-key-password
-                  stream verbose proxy)
+(dex:delete uri &key version headers basic-auth cookie-jar keep-alive
+            use-connection-pool connect-timeout read-timeout
+            force-binary force-string want-stream ssl-key-file
+            ssl-cert-file ssl-key-password stream verbose proxy insecure
+            ca-path)
 ```
 
 ### \[Function\] fetch
@@ -328,7 +342,7 @@ This function signals `http-request-failed` when the HTTP status code is 4xx or 
 Send a GET request to `URI` and write the response body to the `DESTINATION`.
 
 ```common-lisp
-(dex:fetch uri destination &key if-exists verbose proxy)
+(dex:fetch uri destination &key (if-exists error) verbose proxy insecure)
 ```
 
 ## Benchmark
