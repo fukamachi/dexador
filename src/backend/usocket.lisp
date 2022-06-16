@@ -462,7 +462,7 @@
                             force-binary
                             force-string
                             want-stream
-                            proxy
+                            (proxy *default-proxy*)
                             (insecure *not-verify-ssl*)
                             ca-path
                             &aux

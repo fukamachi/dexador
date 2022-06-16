@@ -14,6 +14,7 @@
   (:export :*default-connect-timeout*
            :*default-read-timeout*
            :*verbose*
+           :*default-proxy*
            :*not-verify-ssl*
            :defun-speedy
            :defun-careful
@@ -32,6 +33,10 @@
 (defvar *default-read-timeout* 10)
 (defvar *verbose* nil)
 (defvar *not-verify-ssl* nil)
+(defvar *default-proxy* (or #-windows (uiop:getenv "HTTPS_PROXY")
+                            #-windows (uiop:getenv "HTTP_PROXY"))
+  "If specified will be used as the default value of PROXY in calls to dexador.  Defaults to
+ the value of the environment variable HTTPS_PROXY or HTTP_PROXY if not on Windows.")
 
 (eval-when (:compile-toplevel :load-toplevel :execute)
   (defvar *speedy-declaration* '(declare (optimize (speed 3) (safety 0) (space 0) (compilation-speed 0))))

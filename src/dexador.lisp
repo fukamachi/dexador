@@ -14,6 +14,7 @@
   (:import-from :dexador.util
                 :*default-connect-timeout*
                 :*default-read-timeout*
+                :*default-proxy*
                 :*verbose*
                 :*not-verify-ssl*)
   (:import-from :alexandria
@@ -29,6 +30,7 @@
            :fetch
            :*default-connect-timeout*
            :*default-read-timeout*
+           :*default-proxy*
            :*verbose*
            :*not-verify-ssl*
            :*connection-pool*
