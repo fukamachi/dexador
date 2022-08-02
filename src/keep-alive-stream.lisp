@@ -17,7 +17,7 @@
 (in-package :dexador.keep-alive-stream)
 
 (defclass keep-alive-stream (fundamental-input-stream)
-  ((stream :type stream
+  ((stream :type (or null stream)
            :initarg :stream
            :initform (error ":stream is required")
            :accessor keep-alive-stream-stream
