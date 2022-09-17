@@ -238,6 +238,9 @@
                       (retry-request ()
                         :report "Retry the same request."
                         (apply #'request uri args))
+                      (retry-request ()
+                        :report "Retry the same request without checking for SSL certificate validity."
+                        (apply #'request uri :insecure t args))
                       (ignore-and-continue ()
                         :report "Ignore the error and continue.")))
 
