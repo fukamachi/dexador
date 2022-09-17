@@ -496,7 +496,11 @@
                (retry-request ()
                  :report "Retry the same request."
                  (return-from request
-                   (apply #'request uri :use-connection-pool nil args)))))
+                   (apply #'request uri :use-connection-pool nil args)))
+               (retry-insecure ()
+                 :report "Retry the same request without checking for SSL certificate validity."
+                 (return-from request
+                   (apply #'request uri :use-connection-pool nil :insecure t args)))))
            (http-proxy-p (uri)
              (and uri
                   (let ((scheme (uri-scheme uri)))
