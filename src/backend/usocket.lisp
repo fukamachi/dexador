@@ -550,7 +550,7 @@
                                        (not multipart-p))))
            (boundary (and multipart-p
                           (make-random-string 12)))
-           (content (if form-urlencoded-p
+           (content (if (and form-urlencoded-p (not (stringp content))) ;; user can provide already encoded content, trust them.
                         (quri:url-encode-params content)
                         content))
            (stream (or user-supplied-stream
