@@ -512,6 +512,9 @@
   ;; in the second case also requests connection interruption.
   ;; Previously, this second case lead to an error when closed connection
   ;; was returned to the pool.
+  #+windows
+  (skip "Skipped because connection pool is not used on Windows.")
+  #-windows
   (let ((success-count 0)
         (error-count 0)
         (error-and-close-count 0))
