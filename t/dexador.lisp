@@ -15,14 +15,17 @@
         if (clack.test::port-available-p port)
           return port))
 
-(defmacro testing-app (desc app &body body)
+(defmacro testing-app ((desc &key use-connection-pool) app &body body)
   `(let ((*clack-test-port* (random-port)))
      (clack.test:testing-app ,desc ,app
-       (dex:clear-connection-pool)
-       ,@body)))
+       ;; Clack's TESTING-APP sets dex:*use-connection-pool* to NIL,
+       ;; but we need to change it in some tests
+       (let ((dex:*use-connection-pool* ,use-connection-pool))
+         (dex:clear-connection-pool)
+         ,@body))))
 
 (deftest normal-case-tests
-  (testing-app "normal case"
+  (testing-app ("normal case")
       (lambda (env)
         `(200 (:content-length ,(length (getf env :request-uri))) (,(getf env :request-uri))))
     (testing "GET"
@@ -52,7 +55,7 @@
   #+windows
   (skip "Skipped proxy tests on Windows")
   #-windows
-  (testing-app "proxy (http) case"
+  (testing-app ("proxy (http) case")
       ; proxy behavior is same as direct connection if http
       (lambda (env)
         (let ((body (format nil "~A~%~A"
@@ -89,7 +92,7 @@
   #+windows
   (skip "SOCKS5 proxy tests are skipped")
   #-windows
-  (testing-app "proxy (socks5) case"
+  (testing-app ("proxy (socks5) case")
       (flet ((check (uri in out)
                (flexi-streams:with-input-from-sequence (in in)
                  (equalp
@@ -153,7 +156,7 @@
             (ok (eql code 200)))))))
 
 (deftest redirection-tests
-  (testing-app "redirection"
+  (testing-app ("redirection")
       (lambda (env)
         (let ((id (parse-integer (subseq (getf env :path-info) 1))))
           (cond
@@ -233,7 +236,7 @@
                            (format nil "~C" #\Newline)))
 
 (deftest post-request-tests
-  (testing-app "POST request"
+  (testing-app ("POST request")
       (lambda (env)
         (cond
           ((string= (getf env :path-info) "/upload")
@@ -297,7 +300,7 @@
                    (format nil "\"Within a couple weeks of learning Lisp I found programming in any other language unbearably constraining.\" -- Paul Graham, Road to Lisp~%")))))))
 
 (deftest http-request-failed-tests
-  (testing-app "HTTP request failed"
+  (testing-app ("HTTP request failed")
       (lambda (env)
         (if (string= (getf env :path-info) "/404")
             '(404 (:x-foo 0) ("Not Found"))
@@ -328,7 +331,7 @@
                    "0"))))))
 
 (deftest using-cookies-tests
-  (testing-app "Using cookies"
+  (testing-app ("Using cookies")
       (lambda (env)
         (list (if (string= (getf env :path-info) "/302")
                   302
@@ -352,14 +355,14 @@
       (dex:head (localhost "/302") :cookie-jar cookie-jar))))
 
 (deftest verbose-tests
-  (testing-app "verbose"
+  (testing-app ("verbose")
       (lambda (env)
         (declare (ignore env))
         '(200 () ("ok")))
     (ok (dex:get (localhost) :verbose t))))
 
 (deftest want-stream-tests
-  (testing-app "want-stream"
+  (testing-app ("want-stream")
       (lambda (env)
         (declare (ignore env))
         '(200 (:content-type "text/plain") ("hi")))
@@ -386,7 +389,7 @@
         (ok (equal (babel:octets-to-string buf) "hi"))))))
 
 (deftest big-body-with-want-stream-tests
-  (testing-app "big body with want-stream"
+  (testing-app ("big body with want-stream")
       (lambda (env)
         (declare (ignore env))
         `(200 (:content-type "application/json; charset=utf-8"
@@ -405,7 +408,7 @@
         (ok (eql (read-sequence buf body) 748))))))
 
 (deftest redirection-for-want-stream-tests
-  (testing-app "redirection for want-stream"
+  (testing-app ("redirection for want-stream")
       (lambda (env)
         (if (string= (getf env :path-info) "/index.html")
             '(200 () ("ok"))
@@ -415,7 +418,7 @@
       (ok body))))
 
 (deftest no-body-tests
-  (testing-app "no body"
+  (testing-app ("no body")
     (lambda (env)
       (let ((path (getf env :path-info)))
         (if (string= path "/204")
@@ -438,7 +441,7 @@
 
 (defvar *json* "{\"name\":\"Eitaro Fukamachi\",\"name_ja\":\"深町英太郎\",\"login\":true}")
 (deftest json-tests
-  (testing-app "JSON"
+  (testing-app ("JSON")
       (lambda (env)
         (declare (ignore env))
         `(200 (:content-type "application/json") (,*json*)))
@@ -456,7 +459,7 @@
         (ok (eql status 200))))))
 
 (deftest keep-alive-tests
-  (testing-app "keep-alive"
+  (testing-app ("keep-alive")
       (lambda (env)
         (declare (ignore env))
         '(200 () ("hi")))
@@ -488,8 +491,104 @@
           (ok (= status3 200) "success")
           (ok (not (eql opaque-socket-stream3 opaque-socket-stream2)) "passing in closed stream works"))))))
 
+(defun assert-pool-items-count-is (expected-count)
+  (let ((count (dexador.connection-cache::lru-pool-num-elts dexador:*connection-pool*)))
+    (ok (= count
+           expected-count)
+        (format nil "Pool items count should be equal to ~A (real value is ~A)"
+                expected-count
+                count))))
+
+(defun assert-connection-header-is (headers expected-value)
+  (let ((value (gethash "connection" headers)))
+    (ok (equalp value expected-value)
+        (format nil "\"Connection\" header should be equal to ~S (real value is ~S)"
+                expected-value
+                value))))
+
+
+(deftest connection-pool-and-errors
+  ;; Here we are checking the situation when server returns 400 error and
+  ;; in the second case also requests connection interruption.
+  ;; Previously, this second case lead to an error when closed connection
+  ;; was returned to the pool.
+  #+windows
+  (skip "Skipped because connection pool is not used on Windows.")
+  #-windows
+  (let ((success-count 0)
+        (error-count 0)
+        (error-and-close-count 0))
+    (flet ((assert-success-count (expected)
+             (ok (= success-count expected)
+                 (format nil "Expected success-count to be ~S (real value is ~S)"
+                         expected success-count)))
+           (assert-error-count (expected)
+             (ok (= error-count expected)
+                 (format nil "Expected error-count to be ~S (real value is ~S)"
+                         expected error-count)))
+           (assert-error-and-close-count (expected)
+             (ok (= error-and-close-count expected)
+                 (format nil "Expected error-and-close-count to be ~S (real value is ~S)"
+                         expected error-and-close-count))))
+      (testing-app ("connection-pool-and-errors" :use-connection-pool t)
+          (lambda (env)
+            (let ((path (getf env :path-info)))
+              (cond
+                ((string= path "/error-and-close")
+                 (incf error-and-close-count)
+                 '(400
+                   (:connection "close")
+                   ("")))
+                ((string= path "/error")
+                 (incf error-count)
+                 '(400
+                   nil
+                   ("")))
+                (t
+                 (incf success-count)
+                 '(200
+                   nil
+                   (""))))))
+        (testing "Initial pool state"
+          (assert-pool-items-count-is 0))
+       
+        (testing "Successful requests leave one connect in the pool"
+          (loop repeat 10
+                do (dex:get (localhost "/")))
+          (assert-pool-items-count-is 1)
+          (assert-success-count 10)
+          (assert-error-count 0)
+          (assert-error-and-close-count 0))
+
+        (testing "Repetitive success and error requests should not populate pool with connections"
+          (loop repeat 10
+                do (dex:get (localhost "/"))
+                   (ok (rove:signals (dex:get (localhost "/error"))
+                           'dex:http-request-bad-request)))
+          (assert-success-count 20)
+          (assert-error-count 10)
+          (assert-error-and-close-count 0)
+          ;; Previously, because of the bug, connections count was 8 (maximum)
+          (assert-pool-items-count-is 1))
+
+        (testing "If server requests connection close on error, connection should not be returned to the pool."
+          (loop repeat 10
+                do (dex:get (localhost "/"))
+                   ;; Previously, because of the another bug, other error was signaled,
+                   ;; because dexador retried and error with a new connection,
+                   ;; but closed it before the second attempt, because server response
+                   ;; has "Connection: close" header:
+                   (ok (rove:signals (dex:get (localhost "/error-and-close"))
+                           'dex:http-request-bad-request)))
+
+          (assert-success-count 30)
+          (assert-error-count 10)
+          (assert-error-and-close-count 10)
+          (assert-pool-items-count-is 0))))))
+
+
 (deftest deflate-compression-tests
-  (testing-app "deflate compression"
+  (testing-app ("deflate compression")
       (lambda (env)
         (declare (ignore env))
         `(200 (:content-encoding "deflate" :content-type "text/plain")
@@ -498,7 +597,7 @@
       (ok (equal body "Deflate test string.")))))
 
 (deftest gzip-compression-tests
-  (testing-app "gzip compression"
+  (testing-app ("gzip compression")
       (lambda (env)
         (declare (ignore env))
         `(200 (:content-encoding "gzip" :content-type "text/plain")
