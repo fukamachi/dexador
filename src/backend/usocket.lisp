@@ -664,8 +664,12 @@
                    `(restart-case
                         (handler-bind ((error
                                          (lambda (e)
-                                           (declare (ignorable e))
-                                           (maybe-try-again-without-reusing-stream))))
+                                           ;; We should not retry errors received from the server.
+                                           ;; Only technical errors such as disconnection or some
+                                           ;; problems with the protocol should be retried automatically.
+                                           ;; This solves https://github.com/fukamachi/dexador/issues/137 issue.
+                                           (unless (typep e 'http-request-failed)
+                                             (maybe-try-again-without-reusing-stream)))))
                           ,@body)
                       (retry-request () :report "Retry the same request."
                         (return-from request (apply #'request uri args)))
@@ -674,6 +678,9 @@
         (tagbody
          retry
            (with-retrying
+             (unless (open-stream-p stream)
+               ;; Just to be sure the stream is OK:
+               (error "Trying to use closed stream: ~A" stream))
              (write-sequence first-line-data stream)
              (write-sequence headers-data stream)
              (when cookie-headers
