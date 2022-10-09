@@ -662,14 +662,14 @@
                    `(maybe-try-again-without-reusing-stream t))
                  (with-retrying (&body body)
                    `(restart-case
-                        (handler-bind ((error
+                        (handler-bind (((and error
+                                             ;; We should not retry errors received from the server.
+                                             ;; Only technical errors such as disconnection or some
+                                             ;; problems with the protocol should be retried automatically.
+                                             ;; This solves https://github.com/fukamachi/dexador/issues/137 issue.
+                                             (not http-request-failed))
                                          (lambda (e)
-                                           ;; We should not retry errors received from the server.
-                                           ;; Only technical errors such as disconnection or some
-                                           ;; problems with the protocol should be retried automatically.
-                                           ;; This solves https://github.com/fukamachi/dexador/issues/137 issue.
-                                           (unless (typep e 'http-request-failed)
-                                             (maybe-try-again-without-reusing-stream)))))
+                                           (maybe-try-again-without-reusing-stream))))
                           ,@body)
                       (retry-request () :report "Retry the same request."
                         (return-from request (apply #'request uri args)))
