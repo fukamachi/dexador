@@ -669,6 +669,7 @@
                                              ;; This solves https://github.com/fukamachi/dexador/issues/137 issue.
                                              (not http-request-failed))
                                          (lambda (e)
+                                           (declare (ignore e))
                                            (maybe-try-again-without-reusing-stream))))
                           ,@body)
                       (retry-request () :report "Retry the same request."
