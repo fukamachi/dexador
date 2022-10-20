@@ -86,7 +86,7 @@ keep-alive-stream), and should handle clean-up of it"
 (defmethod stream-read-sequence ((stream keep-alive-stream) sequence start end &key)
   (declare (optimize speed))
   (if (null (keep-alive-stream-stream stream)) ;; we already closed it
-      0
+      start
       (let* ((to-read (min (- end start) (keep-alive-stream-end stream)))
              (n (read-sequence sequence (keep-alive-stream-stream stream)
                                :start start
@@ -98,13 +98,13 @@ keep-alive-stream), and should handle clean-up of it"
 (defmethod stream-read-sequence ((stream keep-alive-chunked-stream) sequence start end &key)
   (declare (optimize speed))
   (if (null (keep-alive-stream-stream stream)) ;; we already closed it
-      0
+      start
       (if (chunga:chunked-stream-input-chunking-p (chunga-stream stream))
           (prog1
               (let ((num-read (read-sequence sequence (chunga-stream stream) :start start :end end)))
                 num-read)
             (maybe-close stream (not (chunga:chunked-stream-input-chunking-p (chunga-stream stream)))))
-          0)))
+          start)))
 
 (defmethod stream-element-type ((stream keep-alive-chunked-stream))
   (stream-element-type (chunga-stream stream)))
