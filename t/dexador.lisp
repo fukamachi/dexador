@@ -615,6 +615,18 @@
                (peek-char nil decoding-stream)
                (read-char decoding-stream))))))
 
+(deftest keep-alive-stream/decoding-stream
+    (with-open-file (stream0 (asdf:system-relative-pathname
+                              :dexador #p"t/data/bug139.txt")
+                             :element-type '(unsigned-byte 8))
+      (let* ((len (file-length stream0))
+             (stream1 (dexador.keep-alive-stream:make-keep-alive-stream stream0 :end len
+                                                                                :chunked-stream nil))
+             (stream2 (dexador.decoding-stream:make-decoding-stream stream1)))
+        (ok (= (length
+                (loop for c = (read-char stream2 nil :eof)
+                      until (eq c :eof)
+                      collect c)) len)))))
 
 (deftest connection-cache-test
   (let ((dexador.connection-cache:*connection-pool* (dexador.connection-cache:make-connection-pool 2)))
