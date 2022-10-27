@@ -652,7 +652,9 @@
       (macrolet ((maybe-try-again-without-reusing-stream (&optional (force nil))
                    `(progn ;; retrying by go retry avoids generating the header, parsing, etc.
                       (when (open-stream-p stream)
-                        (close stream :abort t))
+                        (close stream :abort t)
+                        (setf stream nil))
+                      
                       (when ,(or force 'reusing-stream-p)
                         (setf reusing-stream-p nil
                               user-supplied-stream nil
@@ -678,10 +680,11 @@
                         (try-again-without-reusing-stream)))))
         (tagbody
          retry
+
+           (unless (open-stream-p stream)
+             (try-again-without-reusing-stream))
+           
            (with-retrying
-             (unless (open-stream-p stream)
-               ;; Just to be sure the stream is OK:
-               (error "Trying to use closed stream: ~A" stream))
              (write-sequence first-line-data stream)
              (write-sequence headers-data stream)
              (when cookie-headers
