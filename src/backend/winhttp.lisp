@@ -63,7 +63,7 @@
           do (setf (gethash name hash) value)
         finally (return hash)))
 
-(defun convert-content (content multipart-p form-urlencoded-p)
+(defun convert-content (content multipart-p form-urlencoded-p preferred-content-type)
   (etypecase content
     (cons
      (cond (multipart-p
@@ -76,13 +76,24 @@
            (form-urlencoded-p
             (values
              (babel:string-to-octets (quri:url-encode-params content))
-             "application/x-www-form-urlencoded"))))
-    (string (values (babel:string-to-octets content)
-                    "text/plain"))
-    (pathname (values (read-file-into-byte-vector content)
-                      (mimes:mime content)))
-    ((array (unsigned-byte 8) (*)) content)
-    (null (make-array 0 :element-type '(unsigned-byte 8)))))
+             "application/x-www-form-urlencoded"))
+           (t
+            (error "Can't convert a CONS content"))))
+    (string
+     (values (babel:string-to-octets content)
+             (or preferred-content-type
+                 "text/plain")))
+    (pathname
+     (values (read-file-into-byte-vector content)
+             (or preferred-content-type
+                 (mimes:mime content))))
+    ((array (unsigned-byte 8) (*))
+     (values content
+             (or preferred-content-type
+                 "application/octet-stream")))
+    (null
+     (values (make-array 0 :element-type '(unsigned-byte 8))
+             preferred-content-type))))
 
 ;; TODO: Try asynchronous
 (defun request (uri &rest args
@@ -119,7 +130,7 @@
          (user-agent
            (cdr (find :user-agent headers :key #'car :test #'string-equal))))
     (multiple-value-bind (content detected-content-type)
-        (convert-content content multipart-p form-urlencoded-p)
+        (convert-content content multipart-p form-urlencoded-p (cdr content-type))
       (when detected-content-type
         (if content-type
             (setf (cdr (assoc :content-type headers :test #'string-equal)) detected-content-type)
