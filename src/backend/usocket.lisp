@@ -676,8 +676,7 @@
                           ,@body)
                       (retry-request () :report "Retry the same request."
                         (return-from request (apply #'request uri args)))
-                      (ignore-and-continue () :report "Ignore the error and continue."
-                        (try-again-without-reusing-stream)))))
+                      (ignore-and-continue () :report "Ignore the error and continue."))))
         (tagbody
          retry
 
