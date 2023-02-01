@@ -13,7 +13,9 @@
                 :make-keep-alive-stream)
   (:import-from :dexador.body
                 :decompress-body
-                :decode-body)
+                :decode-body
+                :write-multipart-content
+                :multipart-value-content-type)
   (:import-from :dexador.error
                 :http-request-failed
                 :http-request-not-found
@@ -263,54 +265,26 @@
 
 (defun-speedy multipart-content-length (content boundary)
   (declare (type simple-string boundary))
-  (let ((boundary-length (length boundary)))
-    (+ (loop for (key . val) in content
-             sum (+ 2 boundary-length 2
-                    (length (the simple-string (content-disposition key val)))
-                    (if (pathnamep val)
-                        (+ #.(length "Content-Type: ") (length (the simple-string (mimes:mime val))) 2)
-                        0)
-                    2
-                    (typecase val
-                      (pathname (with-open-file (in val)
-                                  (file-length in)))
-                      (string (length (the octets (babel:string-to-octets val))))
-                      (symbol (length (the octets (babel:string-to-octets (princ-to-string val)))))
-                      (otherwise (length (princ-to-string val))))
-                    2))
-       2 boundary-length 2 2)))
-
-(defun write-multipart-content (content boundary stream)
-  (let ((boundary (ascii-string-to-octets boundary)))
-    (labels ((boundary-line (&optional endp)
-               (write-sequence (ascii-string-to-octets "--") stream)
-               (write-sequence boundary stream)
-               (when endp
-                 (write-sequence (ascii-string-to-octets "--") stream))
-               (crlf))
-             (crlf () (write-sequence +crlf+ stream)))
-      (loop for (key . val) in content
-            do (boundary-line)
-               (write-sequence (ascii-string-to-octets (content-disposition key val)) stream)
-               (when (pathnamep val)
-                 (write-sequence
-                  (ascii-string-to-octets
-                   (format nil "Content-Type: ~A~C~C"
-                           (mimes:mime val)
-                           #\Return #\Newline))
-                  stream))
-               (crlf)
-               (typecase val
-                 (pathname (let ((buf (make-array 1024 :element-type '(unsigned-byte 8))))
-                             (with-open-file (in val :element-type '(unsigned-byte 8))
-                               (loop for n of-type fixnum = (read-sequence buf in)
-                                     until (zerop n)
-                                     do (write-sequence buf stream :end n)))))
-                 (string (write-sequence (babel:string-to-octets val) stream))
-                 (otherwise (write-sequence (babel:string-to-octets (princ-to-string val)) stream)))
-               (crlf)
-            finally
-               (boundary-line t)))))
+  (labels ((content-length (val)
+             (typecase val
+               (pathname (with-open-file (in val)
+                           (file-length in)))
+               (string (length (the octets (babel:string-to-octets val))))
+               (symbol (length (the octets (babel:string-to-octets (princ-to-string val)))))
+               (cons (content-length (first val)))
+               (otherwise (length (princ-to-string val))))))
+    (let ((boundary-length (length boundary)))
+      (+ (loop for (key . val) in content
+               sum (+ 2 boundary-length 2
+                      (length (the simple-string (content-disposition key val)))
+                      (let ((content-type (multipart-value-content-type val)))
+                        (if content-type
+                            (+ #.(length "Content-Type: ") (length content-type) 2)
+                            0))
+                      2
+                      (content-length val)
+                      2))
+         2 boundary-length 2 2))))
 
 (defun build-cookie-headers (uri cookie-jar)
   (with-header-output (buffer)
@@ -540,7 +514,8 @@
     (let* ((uri (quri:uri uri))
            (proxy (when (http-proxy-p proxy-uri) proxy))
            (content-type (cdr (find :content-type headers :key #'car :test #'string-equal)))
-           (multipart-p (or (string= content-type "multipart/form-data")
+           (multipart-p (or (and content-type
+                                 (string= content-type "multipart/" :end1 10))
                             (and (not content-type)
                                  (consp content)
                                  (find-if #'pathnamep content :key #'cdr))))
@@ -607,7 +582,9 @@
                            (write-header* :proxy-authorization proxy-authorization))))))
                  (cond
                    (multipart-p
-                    (write-header :content-type (format nil "multipart/form-data; boundary=~A" boundary))
+                    (write-header* :content-type (format nil "~A; boundary=~A"
+                                                         (or content-type "multipart/form-data")
+                                                         boundary))
                     (unless chunkedp
                       (write-header* :content-length
                                      (multipart-content-length content boundary))))

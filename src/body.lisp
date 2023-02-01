@@ -22,6 +22,7 @@
                 #:make-dstate)
   (:export #:decode-body
            #:write-multipart-content
+           #:multipart-value-content-type
            #:decompress-body))
 (in-package #:dexador.body)
 
@@ -59,6 +60,16 @@
               key
               #\Return #\Newline)))
 
+(defun multipart-value-content-type (value)
+  (typecase value
+    (pathname
+      (the simple-string (mimes:mime value)))
+    (cons
+      (destructuring-bind (val &key content-type)
+          value
+        (declare (ignore val))
+        content-type))))
+
 (defun write-multipart-content (content boundary stream)
   (let ((boundary (ascii-string-to-octets boundary)))
     (labels ((boundary-line (&optional endp)
@@ -71,13 +82,12 @@
       (loop for (key . val) in content
             do (boundary-line)
                (write-sequence (ascii-string-to-octets (content-disposition key val)) stream)
-               (when (pathnamep val)
-                 (write-sequence
-                  (ascii-string-to-octets
-                   (format nil "Content-Type: ~A~C~C"
-                           (mimes:mime val)
-                           #\Return #\Newline))
-                  stream))
+               (let ((content-type (multipart-value-content-type val)))
+                 (when content-type
+                   (write-sequence
+                     (ascii-string-to-octets
+                       (format nil "Content-Type: ~A~C~C" content-type #\Return #\Newline))
+                     stream)))
                (crlf)
                (typecase val
                  (pathname (let ((buf (make-array 1024 :element-type '(unsigned-byte 8))))
@@ -86,6 +96,7 @@
                                      until (zerop n)
                                      do (write-sequence buf stream :end n)))))
                  (string (write-sequence (babel:string-to-octets val) stream))
+                 (cons (write-sequence (babel:string-to-octets (first val)) stream))
                  (otherwise (write-sequence (babel:string-to-octets (princ-to-string val)) stream)))
                (crlf)
             finally
