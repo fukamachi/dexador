@@ -72,7 +72,9 @@
                (let ((stream (make-instance 'fast-output-stream)))
                  (write-multipart-content content boundary stream)
                  (finish-output-stream stream))
-               (format nil "multipart/form-data; boundary=~A" boundary))))
+               (format nil "~A; boundary=~A"
+                       (or preferred-content-type "multipart/form-data")
+                       boundary))))
            (form-urlencoded-p
             (values
              (babel:string-to-octets (quri:url-encode-params content))
@@ -119,7 +121,8 @@
   (let* ((uri (quri:uri uri))
          (content-type
            (find :content-type headers :key #'car :test #'string-equal))
-         (multipart-p (or (string= (cdr content-type) "multipart/form-data")
+         (multipart-p (or (and content-type
+                               (string= (cdr content-type) "multipart/" :end1 10))
                           (and (null (cdr content-type))
                                (consp content)
                                (find-if #'pathnamep content :key #'cdr))))
