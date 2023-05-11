@@ -790,7 +790,7 @@
                                               (if (and use-connection-pool keep-connection-alive (not user-supplied-stream) (streamp body))
                                                   (lambda (underlying-stream abort)
                                                     (declare (ignore abort))
-                                                    (when (open-stream-p underlying-stream)
+                                                    (when (and underlying-stream (open-stream-p underlying-stream))
                                                       ;; read any left overs the user may have not read (in case of errors on user side?)
                                                       (loop while (ignore-errors (listen underlying-stream)) ;; ssl streams may close
                                                             do (read-byte underlying-stream nil nil))

@@ -117,4 +117,5 @@ keep-alive-stream), and should handle clean-up of it"
     (and underlying-stream (open-stream-p underlying-stream))))
 
 (defmethod close ((stream keep-alive-stream) &key abort)
-  (funcall (close-action stream) (keep-alive-stream-stream stream) abort))
+  (funcall (close-action stream) (keep-alive-stream-stream stream) abort)
+  (setf (keep-alive-stream-stream stream) nil))

@@ -666,3 +666,22 @@
       (ok (string= called "host1"))
       (dexador.connection-cache:push-connection "host4" "host4-socket" (lambda (s) (declare (ignore s)) (setf called "host4")))
       (ok (string= called "host2")))))
+
+(deftest keep-alive-stream-close
+    "Issue #150, close on keep alive stream does"
+    (with-open-file (stream0 (asdf:system-relative-pathname
+                              :dexador #p"t/data/bug139.txt")
+                             :element-type '(unsigned-byte 8))
+      (let* ((len (file-length stream0))
+	     (fake-cache nil)
+             (stream (dexador.keep-alive-stream:make-keep-alive-stream
+		      stream0 :end len :chunked-stream nil
+			      :on-close-or-eof (lambda (underlying-stream abort)
+						 (declare (ignorable abort))
+						 (when underlying-stream
+						   (push underlying-stream fake-cache))))))
+	(ok (not (null (open-stream-p stream))))
+	(ok (null fake-cache))
+	(close stream)
+	(ok (open-stream-p (car fake-cache)))
+	(ok (null (open-stream-p stream))))))
