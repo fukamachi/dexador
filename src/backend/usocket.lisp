@@ -515,7 +515,8 @@
            (proxy (when (http-proxy-p proxy-uri) proxy))
            (content-type (cdr (find :content-type headers :key #'car :test #'string-equal)))
            (multipart-p (or (and content-type
-                                 (string= content-type "multipart/" :end1 10))
+                                 (>= (length content-type) 10)
+				 (string= content-type "multipart/" :end1 10))
                             (and (not content-type)
                                  (consp content)
                                  (find-if #'pathnamep content :key #'cdr))))
