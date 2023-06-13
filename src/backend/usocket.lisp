@@ -459,7 +459,8 @@
                         (scheme (uri-scheme uri)))
                    (declare (type string scheme))
                    (when read-timeout
-                     (setf (usocket:socket-option connection :receive-timeout) read-timeout))
+                     #+lispworks(setf (stream:stream-read-timeout stream) read-timeout)
+                     #-lispworks(setf (usocket:socket-option connection :receive-timeout) read-timeout))
                    (when (socks5-proxy-p proxy-uri)
                      (ensure-socks5-connected stream stream uri method))
                    (if (string= scheme "https")
