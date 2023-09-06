@@ -667,6 +667,10 @@
       (dexador.connection-cache:push-connection "host4" "host4-socket" (lambda (s) (declare (ignore s)) (setf called "host4")))
       (ok (string= called "host2")))))
 
+(deftest fail-intentionally
+  (let ((str (make-string 3 "x")))
+    (ok (string= str "xyz"))))
+
 (deftest keep-alive-stream-close
     "Issue #150, close on keep alive stream does"
     (with-open-file (stream0 (asdf:system-relative-pathname
