@@ -668,7 +668,7 @@
       (ok (string= called "host2")))))
 
 (deftest fail-intentionally
-  (let ((str (make-string 3 "x")))
+  (let ((str (make-string 3 :initial-element #\x)))
     (ok (string= str "xyz"))))
 
 (deftest keep-alive-stream-close
