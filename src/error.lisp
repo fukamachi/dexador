@@ -114,12 +114,14 @@
                             ',(intern (format nil "~A-~A" :http-request name)))))
 
 (defun http-request-failed (status &key body headers uri method)
-  (error (gethash status *request-failed-error* 'http-request-failed)
-         :body body
-         :status status
-         :headers headers
-         :uri uri
-         :method method))
+  (cerror
+   "Ignore and continue"
+   (gethash status *request-failed-error* 'http-request-failed)
+   :body body
+   :status status
+   :headers headers
+   :uri uri
+   :method method))
 
 (define-condition socks5-proxy-request-failed (http-request-failed)
   ((reason :initarg :reason))
