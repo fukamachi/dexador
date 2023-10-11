@@ -723,7 +723,7 @@
                                                                                    (uri-host uri)
                                                                                    (uri-path uri))))
                                                       set-cookies)))))
-               (when (and (member status '(301 302 303 307) :test #'=)
+               (when (and (member status '(301 302 303 307 308) :test #'=)
                           (gethash "location" response-headers)
                           (/= max-redirects 0))
                  ;; Need to read the response body
@@ -745,7 +745,7 @@
                                                 (eql (uri-port location-uri)
                                                      (uri-port uri))))))
                    (if (and same-server-p
-                            (or (= status 307)
+                            (or (= status 307) (= status 308)
                                 (member method '(:get :head) :test #'eq)))
                        (progn ;; redirection to the same host
                          (setq uri (merge-uris location-uri uri))
@@ -771,7 +771,7 @@
                          (setf (getf args :max-redirects)
                                (1- max-redirects))
                          ;; Redirect as GET if it's 301, 302, 303
-                         (unless (or (= status 307)
+                         (unless (or (= status 307) (= status 308)
                                      (member method '(:get :head) :test #'eq))
                            (setf (getf args :method) :get))
                          (return-from request

@@ -201,7 +201,7 @@
                                                      set-cookies)))))
 
               ;; Redirect
-              (when (and (member status '(301 302 303 307))
+              (when (and (member status '(301 302 303 307 308))
                          (gethash "location" response-headers)
                          (/= max-redirects 0))
                 (let ((location-uri (quri:uri (gethash "location" response-headers))))
@@ -213,7 +213,7 @@
                                                      (quri:uri-host uri))
                                             (eql (quri:uri-port location-uri)
                                                  (quri:uri-port uri))))
-                                   (or (= status 307)
+                                   (or (= status 307) (= status 308)
                                        (member method '(:get :head) :test #'eq)))
                               method
                               :get)))
