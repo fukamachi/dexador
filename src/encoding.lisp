@@ -50,11 +50,17 @@
                nil)
            :utf-8))
       ((and (string-equal type "application")
-            (string-equal subtype "json"))
+            (or (string-equal subtype "json")
+                (string-equal subtype "javascript")))
        ;; According to RFC4627 (http://www.ietf.org/rfc/rfc4627.txt),
        ;; JSON text SHALL be encoded in Unicode. The default encoding is UTF-8.
        ;; It's possible to determine if the encoding is UTF-16 or UTF-36
        ;; by looking at the first four octets, however, I leave it to the future.
+       ;;
+       ;; According to RFC4329 (https://datatracker.ietf.org/doc/html/rfc4329),
+       ;; javascript also is specified by charset, or defaults to UTF-8
+       ;; It's also possible to specify in the first four octets, but
+       ;; like application/json I leave it to the future.
        (charset-to-encoding charset :utf-8))
       ((and (string-equal type "application")
             (ppcre:scan "(?:[^+]+\\+)?xml" subtype))
