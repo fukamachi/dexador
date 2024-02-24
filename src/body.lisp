@@ -6,7 +6,9 @@
                 #:make-decoding-stream)
   (:import-from #:dexador.util
                 #:ascii-string-to-octets
-                #:+crlf+)
+                #:+crlf+
+                #:octets)
+  (:import-from #:alexandria #:copy-stream #:assoc-value)
   (:import-from #:babel
                 #:octets-to-string
                 #:character-decoding-error)
@@ -23,7 +25,12 @@
   (:export #:decode-body
            #:write-multipart-content
            #:multipart-value-content-type
-           #:decompress-body))
+           #:decompress-body
+           #:write-as-octets
+           #:multipart-content-length
+           #:content-length
+           #:with-content-caches
+           #:content-type))
 (in-package #:dexador.body)
 
 (defun decode-body (content-type body &key default-charset on-close)
@@ -60,15 +67,89 @@
               key
               #\Return #\Newline)))
 
+(defmacro define-alist-cache (cache-name)
+  (let ((var (intern (format nil "*~A*" cache-name))))
+  `(progn
+     (defvar ,var)
+     (defun ,(intern (format nil "LOOKUP-IN-~A" cache-name)) (elt)
+       (when (boundp ',var)
+         (alexandria:assoc-value ,var elt)))
+     (defun (setf ,(intern (format nil "LOOKUP-IN-~A" cache-name))) (val elt)
+       (when (boundp ',var)
+         (setf (alexandria:assoc-value ,var elt) val))
+       val))))
+
+;; If bound, an alist mapping content to content-type,
+;; used to avoid determining content type multiple times
+(define-alist-cache content-type-cache)
+;; If bound, an alist mapping content to encoded content, to avoid
+;; double converting content when we must calculate its length first
+(define-alist-cache content-encoding-cache)
+
+(defmacro with-content-caches (&body body)
+  `(let ((*content-type-cache* nil)
+         (*content-encoding-cache* nil))
+     ,@body))
+
+(defun content-type (value)
+  (typecase value
+    (pathname (or (lookup-in-content-type-cache value)
+                  (setf (lookup-in-content-type-cache value) (mimes:mime value))))
+    (otherwise nil)))
+
 (defun multipart-value-content-type (value)
   (typecase value
-    (pathname
-      (the simple-string (mimes:mime value)))
     (cons
-      (destructuring-bind (val &key content-type)
-          value
-        (declare (ignore val))
-        content-type))))
+     (destructuring-bind (val &key content-type)
+         value
+       (or content-type (content-type val))))
+    (otherwise (content-type value))))
+
+(defun convert-to-octets (val)
+  (or (lookup-in-content-encoding-cache val)
+      (setf (lookup-in-content-encoding-cache val)
+            (typecase val
+              (string (babel:string-to-octets val))
+              ((array (unsigned-byte 8) (*)) val)
+              (symbol (babel:string-to-octets (princ-to-string val)))
+              (cons (convert-to-octets (first val)))
+              (otherwise (babel:string-to-octets (princ-to-string val)))))))
+
+(defun write-as-octets (stream val)
+  (typecase val
+    ((array (unsigned-byte 8) (*)) (write-sequence val stream))
+    (pathname
+     (with-open-file (in val :element-type '(unsigned-byte 8))
+       (alexandria:copy-stream in stream)))
+    (string
+     (write-sequence (convert-to-octets val) stream))
+    (otherwise (write-sequence (convert-to-octets val) stream))))
+
+(defun content-length (val)
+  (typecase val
+    (pathname (with-open-file (in val)
+                (file-length in)))
+    (cons (content-length (first val)))
+    (otherwise (length (convert-to-octets val)))))
+
+(defun multipart-content-length (content boundary)
+  (declare (type simple-string boundary))
+  (let ((boundary-length (length boundary)))
+    (+ (loop for (key . val) in content
+             sum (+ 2 ;; --
+                    boundary-length
+                    2 ;; CR LF
+                    (length (the simple-string (content-disposition key val)))
+                    (let ((content-type (multipart-value-content-type val)))
+                      (if content-type
+                          (+ #.(length "Content-Type: ") (length content-type) 2)
+                          0))
+                    2
+                    (content-length val)
+                    2)
+               into total-length
+             finally (return total-length))
+       2 boundary-length 2 2)))
 
 (defun write-multipart-content (content boundary stream)
   (let ((boundary (ascii-string-to-octets boundary)))
@@ -89,15 +170,7 @@
                        (format nil "Content-Type: ~A~C~C" content-type #\Return #\Newline))
                      stream)))
                (crlf)
-               (typecase val
-                 (pathname (let ((buf (make-array 1024 :element-type '(unsigned-byte 8))))
-                             (with-open-file (in val :element-type '(unsigned-byte 8))
-                               (loop for n of-type fixnum = (read-sequence buf in)
-                                     until (zerop n)
-                                     do (write-sequence buf stream :end n)))))
-                 (string (write-sequence (babel:string-to-octets val) stream))
-                 (cons (write-sequence (babel:string-to-octets (first val)) stream))
-                 (otherwise (write-sequence (babel:string-to-octets (princ-to-string val)) stream)))
+               (write-as-octets stream val)
                (crlf)
             finally
                (boundary-line t)))))
