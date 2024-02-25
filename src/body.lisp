@@ -51,21 +51,24 @@
         body)))
 
 (defun content-disposition (key val)
-  (if (pathnamep val)
-      (let* ((filename (file-namestring val))
-             (utf8-filename-p (find-if (lambda (char)
-                                         (< 127 (char-code char)))
-                                       filename)))
-        (format nil "Content-Disposition: form-data; name=\"~A\"; ~:[filename=\"~A\"~;filename*=UTF-8''~A~]~C~C"
-                key
-                utf8-filename-p
-                (if utf8-filename-p
-                    (url-encode filename :encoding :utf-8)
-                    filename)
-                #\Return #\Newline))
+  (typecase val
+    (cons (content-disposition key (first val)))
+    (pathname
+     (let* ((filename (file-namestring val))
+            (utf8-filename-p (find-if (lambda (char)
+                                        (< 127 (char-code char)))
+                                      filename)))
+       (format nil "Content-Disposition: form-data; name=\"~A\"; ~:[filename=\"~A\"~;filename*=UTF-8''~A~]~C~C"
+               key
+               utf8-filename-p
+               (if utf8-filename-p
+                   (url-encode filename :encoding :utf-8)
+                   filename)
+               #\Return #\Newline)))
+    (otherwise
       (format nil "Content-Disposition: form-data; name=\"~A\"~C~C"
               key
-              #\Return #\Newline)))
+              #\Return #\Newline))))
 
 (defmacro define-alist-cache (cache-name)
   (let ((var (intern (format nil "*~A*" cache-name))))
@@ -123,6 +126,7 @@
        (alexandria:copy-stream in stream)))
     (string
      (write-sequence (convert-to-octets val) stream))
+    (cons (write-as-octets stream (first val)))
     (otherwise (write-sequence (convert-to-octets val) stream))))
 
 (defun content-length (val)
