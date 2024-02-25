@@ -12,10 +12,13 @@
   (:import-from :dexador.keep-alive-stream
                 :make-keep-alive-stream)
   (:import-from :dexador.body
-                :decompress-body
-                :decode-body
-                :write-multipart-content
-                :multipart-value-content-type)
+                #:with-content-caches
+                #:decompress-body
+                #:decode-body
+                #:write-multipart-content
+                #:content-length
+                #:multipart-content-length
+                #:multipart-value-content-type)
   (:import-from :dexador.error
                 :http-request-failed
                 :http-request-not-found
@@ -263,29 +266,6 @@
               key
               #\Return #\Newline)))
 
-(defun-speedy multipart-content-length (content boundary)
-  (declare (type simple-string boundary))
-  (labels ((content-length (val)
-             (typecase val
-               (pathname (with-open-file (in val)
-                           (file-length in)))
-               (string (length (the octets (babel:string-to-octets val))))
-               (symbol (length (the octets (babel:string-to-octets (princ-to-string val)))))
-               (cons (content-length (first val)))
-               (otherwise (length (princ-to-string val))))))
-    (let ((boundary-length (length boundary)))
-      (+ (loop for (key . val) in content
-               sum (+ 2 boundary-length 2
-                      (length (the simple-string (content-disposition key val)))
-                      (let ((content-type (multipart-value-content-type val)))
-                        (if content-type
-                            (+ #.(length "Content-Type: ") (length content-type) 2)
-                            0))
-                      2
-                      (content-length val)
-                      2))
-         2 boundary-length 2 2))))
-
 (defun build-cookie-headers (uri cookie-jar)
   (with-header-output (buffer)
     (let ((cookies (cookie-jar-host-cookies cookie-jar (uri-host uri) (or (uri-path uri) "/")
@@ -447,6 +427,7 @@
                       connect-timeout ca-path)
            (type real version)
            (type fixnum max-redirects))
+  (with-content-caches
   (labels ((make-new-connection (uri)
              (restart-case
                  (let* ((con-uri (quri:uri (or proxy uri)))
@@ -602,19 +583,17 @@
                       (string
                        (write-header* :content-type (or content-type "text/plain"))
                        (unless chunkedp
-                         (write-header* :content-length (length (the (simple-array (unsigned-byte 8) *) (babel:string-to-octets content))))))
+                         (write-header* :content-length (content-length content))))
                       ((array (unsigned-byte 8) *)
                        (write-header* :content-type (or content-type "text/plain"))
                        (unless chunkedp
                          (write-header* :content-length (length content))))
                       (pathname
-                       (write-header* :content-type (or content-type (mimes:mime content)))
+                       (write-header* :content-type (or content-type (dexador.body:content-type content)))
                        (unless chunkedp
-                         (if-let ((content-length (assoc :content-length headers :test #'string-equal)))
-                           (write-header :content-length (cdr content-length))
-                           (with-open-file (in content)
-                             (write-header :content-length (file-length in)))))))))
-
+                         (write-header :content-length
+                                       (or (cdr (assoc :content-length headers :test #'string-equal))
+                                           (content-length content))))))))
                  ;; Transfer-Encoding: chunked
                  (when (and chunkedp
                             (not transfer-encoding))
@@ -678,15 +657,9 @@
                (when chunkedp
                  (setf (chunga:chunked-stream-output-chunking-p stream) t))
                (with-retrying
-                 (etypecase content
-                   (string
-                    (write-sequence (babel:string-to-octets content) stream))
-                   ((array (unsigned-byte 8) *)
-                    (write-sequence content stream))
-                   (pathname (with-open-file (in content :element-type '(unsigned-byte 8))
-                               (copy-stream in stream)))
-                   (cons
-                    (write-multipart-content content boundary stream)))
+                 (if (consp content)
+                     (dexador.body:write-multipart-content content boundary stream)
+                     (dexador.body:write-as-octets stream content))
                  (when chunkedp
                    (setf (chunga:chunked-stream-output-chunking-p stream) nil))
                  (finish-output stream))))
@@ -834,4 +807,4 @@
                                           (let ((wrapped-stream (make-usocket-wrapped-stream :stream stream)))
                                             (trivial-garbage:finalize wrapped-stream (lambda () (close stream)))
                                             wrapped-stream)))))))
-                 (finalize-connection stream (gethash "connection" response-headers) uri)))))))))
+                 (finalize-connection stream (gethash "connection" response-headers) uri))))))))))

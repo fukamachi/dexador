@@ -219,9 +219,11 @@ All functions take similar arguments.
 - `version` (number)
   - The version of the HTTP protocol: typically `1.0` or `1.1`. The default is `1.1`.
 - `content` (string, alist or pathname)
-  - The body of the request.
+  - The body of the request.  content may be an alist containing key value pairs, where the value can be a string, pathname, an (array (unsigned-byte 8) (*)), or a cons.  If the value is
+  a cons, then it may contain a :content-type override such as: :content `(("key" ,(make-array 5 :element-type '(unsigned-byte 8)) :content-type "application/octets")) which will result in a
+  multipart form encoded submission.
 - `headers` (alist)
-  - The headers of the request. If the value of a pair is `NIL`, the header won't be sent. You can overwrite the default headers (Host, User-Agent and Accept) by this with the same header name.
+  - The headers of the request. If the value of a pair is `NIL`, the header won't be sent. You can overwrite the default headers (Host, User-Agent, Accept, Content-Type) by this with the same header name.
 - `basic-auth` (cons of username and password)
   - Username and password for basic authorization. This is a cons having username at car and password at cdr. (e.g. `'("foo" . "bar")`)
 - `cookie-jar` (cookie-jar of [cl-cookie](https://github.com/fukamachi/cl-cookie))

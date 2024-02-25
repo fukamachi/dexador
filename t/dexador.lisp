@@ -685,3 +685,13 @@
 	(close stream)
 	(ok (open-stream-p (car fake-cache)))
 	(ok (null (open-stream-p stream))))))
+
+(deftest multipart-content
+  "When not using chunked encoding, multipart-content-length should be correct!"
+  (let ((test `(("var" "hello")
+		("var2" ,(make-array 15 :element-type '(unsigned-byte 8))
+			:content-type "application/octet-stream"))))
+    (ok (= (length
+	    (flexi-streams:with-output-to-sequence (str)
+	      (dexador.body:write-multipart-content test "BLARG" str)))
+	   (dexador.body:multipart-content-length test "BLARG")))))
