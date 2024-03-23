@@ -291,6 +291,23 @@
         (ok (eql code 200))
         (ok (equal body
                    (format nil "title: Road to Lisp~%body: \"Within a couple weeks of learning Lisp I found programming in any other language unbearably constraining.\" -- Paul Graham, Road to Lisp~2%")))))
+    (testing "multipart-boundary-added"
+      (multiple-value-bind (body code)
+          (dex:post (localhost)
+                    :content `(("title" . "Road to Lisp")
+			       ("body" . ,(asdf:system-relative-pathname :dexador #P"t/data/quote.txt"))))
+        (ok (eql code 200))
+        (ok (equal body
+                   (format nil "title: Road to Lisp~%body: \"Within a couple weeks of learning Lisp I found programming in any other language unbearably constraining.\" -- Paul Graham, Road to Lisp~2%")))))
+    (testing "multipart-boundary-test-added-even-if-content-type-specified"
+      (multiple-value-bind (body code)
+          (dex:post (localhost)
+		    :headers '((:content-type . "multipart/form-data"))
+                    :content `(("title" . "Road to Lisp")
+			       ("body" . ,(asdf:system-relative-pathname :dexador #P"t/data/quote.txt"))))
+        (ok (eql code 200))
+        (ok (equal body
+                   (format nil "title: Road to Lisp~%body: \"Within a couple weeks of learning Lisp I found programming in any other language unbearably constraining.\" -- Paul Graham, Road to Lisp~2%")))))
     (testing "upload"
       (multiple-value-bind (body code)
           (dex:post (localhost "/upload")
