@@ -406,7 +406,7 @@
 (defun-careful request (uri &rest args
                             &key (method :get) (version 1.1)
                             content headers
-                            basic-auth
+                            basic-auth bearer-auth
                             cookie-jar
                             (connect-timeout *default-connect-timeout*) (read-timeout *default-read-timeout*)
                             (keep-alive t) (use-connection-pool t)
@@ -549,13 +549,18 @@
                    ((and (not keep-alive)
                          (= (the real version) 1.1))
                     (write-header* :connection "close")))
-                 (when basic-auth
-                   (write-header* :authorization
-                                  (format nil "Basic ~A"
-                                          (string-to-base64-string
-                                           (format nil "~A:~A"
-                                                   (car basic-auth)
-                                                   (cdr basic-auth))))))
+		 (cond ((and bearer-auth basic-auth)
+			(error "You should only use one Authorization header."))
+		       (basic-auth
+			(write-header* :authorization
+				       (format nil "Basic ~A"
+					       (string-to-base64-string
+						(format nil "~A:~A"
+							(car basic-auth)
+							(cdr basic-auth))))))
+		       (bearer-auth
+			(write-header* :authorization
+				       (format nil "Bearer ~A" bearer-auth))))
                  (when proxy
                    (let ((scheme (quri:uri-scheme uri)))
                      (when (string= scheme "http")

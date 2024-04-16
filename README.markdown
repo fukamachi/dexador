@@ -119,7 +119,10 @@ Dexador adopts [cl-cookie](https://github.com/fukamachi/cl-cookie) for its cooki
 ;   <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
 ```
 
-### Basic Authorization
+### Authorization
+You can only supply either basic or bearer authorization.
+
+#### Basic Authorization
 
 ```common-lisp
 (dex:head "http://www.hatena.ne.jp/" :basic-auth '("nitro_idiot" . "password") :verbose t)
@@ -129,6 +132,20 @@ Dexador adopts [cl-cookie](https://github.com/fukamachi/cl-cookie) for its cooki
 ;   Host: www.hatena.ne.jp
 ;   Accept: */*
 ;   Authorization: Basic bml0cm9faWRpb3Q6cGFzc3dvcmQ=
+;
+;   >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+```
+#### Bearer Authorization
+
+```common-lisp
+(dex:head "http://www.hatena.ne.jp/" :bearer-auth "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9"
+                                     :verbose t)
+;-> >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+;   HEAD / HTTP/1.1
+;   User-Agent: Dexador/0.9.15 (SBCL 2.4.3); Linux; 6.7.0-20-amd64
+;   Host: www.hatena.ne.jp
+;   Accept: */*
+;   Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9
 ;   
 ;   >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 ```
