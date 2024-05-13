@@ -34,7 +34,7 @@ jobs:
       - name: Load Dexador
         shell: bash
         run: |
-          /c/roswell/bin/ros -e '(handler-bind ((error (lambda (e) (uiop:print-condition-backtrace e) (uiop:quit -1)))) (ql:quickload :dexador))'
+          /c/roswell/bin/ros -e '(handler-bind ((error (lambda (e) (uiop:print-condition-backtrace e) (uiop:quit -1)))) (ql:quickload (list :dexador :dexador-test)))'
       - name: Run tests
         shell: bash
         run: |
