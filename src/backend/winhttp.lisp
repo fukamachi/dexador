@@ -101,7 +101,7 @@
 (defun request (uri &rest args
                             &key (method :get) (version 1.1)
                             content headers
-                            basic-auth
+                            basic-auth bearer-auth
                             cookie-jar
                             (connect-timeout *default-connect-timeout*) (read-timeout *default-read-timeout*)
                             (keep-alive t) (use-connection-pool t)
@@ -158,6 +158,12 @@
               ((quri:uri-userinfo uri)
                (destructuring-bind (user pass) (split-sequence #\: (quri:uri-userinfo uri))
                  (set-credentials req user pass)))
+	      ((and basic-auth bearer-auth)
+	       (error "You should only use one Authorization header."))
+	      (bearer-auth
+	       (setf headers
+		     (append headers
+			     (list (cons "Authorization" (concatenate 'string "Bearer " bearer-auth))))))
               (basic-auth
                (set-credentials req (car basic-auth) (cdr basic-auth))))
 
