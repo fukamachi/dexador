@@ -38,7 +38,9 @@
 
            ;; Restarts
            :retry-request
-           :ignore-and-continue)
+           :ignore-and-continue
+
+           :*dexador-backend*)
   (:use-reexport :dexador.error))
 (in-package :dexador)
 
