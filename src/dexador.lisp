@@ -1,9 +1,7 @@
 (in-package :cl-user)
 (uiop:define-package dexador
   (:nicknames :dex)
-  (:use :cl
-        #-windows #:dexador.backend.usocket
-        #+windows #:dexador.backend.winhttp)
+  (:use :cl)
   (:shadow :get
            :delete)
   (:import-from :dexador.connection-cache
@@ -43,6 +41,45 @@
            :ignore-and-continue)
   (:use-reexport :dexador.error))
 (in-package :dexador)
+
+(defvar *dexador-backend*
+  #+windows :winhttp
+  #-windows :usocket)
+
+(defun request (uri &rest args
+                    &key method version
+                         content headers
+                         basic-auth bearer-auth
+                         cookie-jar
+                         connect-timeout read-timeout
+                         keep-alive use-connection-pool
+                         max-redirects
+                         ssl-key-file ssl-cert-file ssl-key-password
+                         stream verbose
+                         force-binary
+                         force-string
+                         want-stream
+                         proxy
+                         insecure
+                         ca-path)
+  (declare (ignore method version
+                   content headers
+                   basic-auth bearer-auth
+                   cookie-jar
+                   connect-timeout read-timeout
+                   keep-alive use-connection-pool
+                   max-redirects
+                   ssl-key-file ssl-cert-file ssl-key-password
+                   stream verbose
+                   force-binary
+                   force-string
+                   want-stream
+                   proxy
+                   insecure
+                   ca-path))
+  (ecase *dexador-backend*
+    (:usocket (apply #'uiop:symbol-call '#:dexador.backend.usocket '#:request uri args))
+    (:winhttp (apply #'uiop:symbol-call '#:dexador.backend.winhttp '#:request uri args))))
 
 (defun get (uri &rest args
             &key version headers basic-auth bearer-auth cookie-jar keep-alive use-connection-pool

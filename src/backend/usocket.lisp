@@ -60,7 +60,7 @@
                 :merge-uris)
   (:import-from :cl-base64
                 :string-to-base64-string)
-  #-(or windows dexador-no-ssl)
+  #-dexador-no-ssl
   (:import-from :cl+ssl
                 :with-global-context
                 :make-context
@@ -362,9 +362,9 @@
            (fail 'dexador.error:socks5-proxy-request-failed :reason "Unknown address")))))))
 
 (defun make-ssl-stream (stream ca-path ssl-key-file ssl-cert-file ssl-key-password hostname insecure)
-  #+(or windows dexador-no-ssl)
+  #+dexador-no-ssl
   (error "SSL not supported. Remove :dexador-no-ssl from *features* to enable SSL.")
-  #-(or windows dexador-no-ssl)
+  #-dexador-no-ssl
   (progn
     (cl+ssl:ensure-initialized)
     (let ((ctx (cl+ssl:make-context :verify-mode
