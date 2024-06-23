@@ -1,6 +1,7 @@
 (defpackage #:dexador.backend.winhttp
   (:nicknames :dex.winhttp)
   (:use #:cl
+        #:dexador.restarts
         #:dexador.util
         #:winhttp)
   (:import-from #:dexador.body
@@ -30,11 +31,7 @@
                 #:when-let)
   (:import-from #:split-sequence
                 #:split-sequence)
-  (:export :request
-
-           ;; Restarts
-           :retry-request
-           :ignore-and-continue))
+  (:export :request))
 (in-package #:dexador.backend.winhttp)
 
 (defconstant +WINHTTP_OPTION_DISABLE_FEATURE+ 63)
@@ -257,10 +254,12 @@
                                              :method method)
                       (retry-request ()
                         :report "Retry the same request."
-                        (apply #'request uri args))
+                        (return-from request
+                          (apply #'request uri args)))
                       (retry-insecure ()
                         :report "Retry the same request without checking for SSL certificate validity."
-                        (apply #'request uri :insecure t args))
+                        (return-from request
+                          (apply #'request uri :insecure t args)))
                       (ignore-and-continue ()
                         :report "Ignore the error and continue.")))
 
