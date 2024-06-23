@@ -2,6 +2,7 @@
 (defpackage dexador.backend.usocket
   (:nicknames :dex.usocket)
   (:use :cl
+        :dexador.restarts
         :dexador.encoding
         :dexador.util)
   (:import-from :dexador.connection-cache
@@ -74,11 +75,7 @@
                 :ensure-list
                 :ends-with-subseq)
   (:import-from :uiop)
-  (:export :request
-
-           ;; Restarts
-           :retry-request
-           :ignore-and-continue))
+  (:export :request))
 (in-package :dexador.backend.usocket)
 
 (defparameter *ca-bundle*

@@ -33,16 +33,17 @@
                (:version "uiop" "3.1.1"))
   :components ((:module "src"
                 :components
-                ((:file "dexador" :depends-on ("backend" "error"))
+                ((:file "dexador" :depends-on ("backend" "error" "restarts"))
                  (:file "encoding")
                  (:file "connection-cache")
                  (:file "decoding-stream")
                  (:file "keep-alive-stream")
                  (:file "body" :depends-on ("encoding" "decoding-stream" "util"))
                  (:file "error")
+                 (:file "restarts")
                  (:file "util")
                  (:module "backend"
-                  :depends-on ("encoding" "connection-cache" "decoding-stream" "keep-alive-stream" "body" "error" "util")
+                  :depends-on ("encoding" "connection-cache" "decoding-stream" "keep-alive-stream" "body" "error" "restarts" "util")
                   :components
                   ((:file "usocket" :if-feature (:not :windows))
                    (:file "winhttp" :if-feature :windows))))))
