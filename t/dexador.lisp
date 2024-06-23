@@ -568,7 +568,7 @@
                    (""))))))
         (testing "Initial pool state"
           (assert-pool-items-count-is 0))
-       
+
         (testing "Successful requests leave one connect in the pool"
           (loop repeat 10
                 do (dex:get (localhost "/")))
@@ -712,3 +712,36 @@
 	    (flexi-streams:with-output-to-sequence (str)
 	      (dexador.body:write-multipart-content test "BLARG" str)))
 	   (dexador.body:multipart-content-length test "BLARG")))))
+
+(deftest restarts
+  (let ((call 0))
+    (testing-app ("ok for every 5 times")
+        (lambda (env)
+          (cond
+            ((equal (getf env :path-info) "/404")
+             `(404 () ("not found")))
+            ((zerop (mod (incf call) 5))
+             `(200 () ("ok")))
+            (t `(422 () ("ng")))))
+      (testing "retry-request"
+        (let ((retry (dex:retry-request 2 :interval 0)))
+          (handler-case
+              (handler-bind ((dex:http-request-failed retry))
+                (dex:get (localhost "/")))
+            (dex:http-request-failed ()
+              (ok (= call 3)))))
+        (handler-bind ((dex:http-request-failed #'dex:retry-request))
+          (multiple-value-bind (body code headers)
+              (dex:get (localhost "/"))
+            (declare (ignore body headers))
+            (ok (eql code 200))
+            (ok (= call 5)))))
+      (testing "ignore-and-continue"
+        (handler-bind ((dex:http-request-not-found #'dex:ignore-and-continue))
+          (multiple-value-bind (body code headers)
+              (dex:get (localhost "/404"))
+            (declare (ignore body headers))
+            (ok (eql code 404))
+            (ok (= call 5)))
+          (ok (signals (dex:get (localhost "/"))
+                       'dex:http-request-failed)))))))
