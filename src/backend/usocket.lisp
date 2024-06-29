@@ -653,18 +653,18 @@
 
            ;; Sending the content
            (when content
-             (let ((stream (if chunkedp
-                               (chunga:make-chunked-stream stream)
-                               stream)))
+             (let ((encoding-stream (if chunkedp
+				       (chunga:make-chunked-stream stream)
+				       stream)))
                (when chunkedp
-                 (setf (chunga:chunked-stream-output-chunking-p stream) t))
+                 (setf (chunga:chunked-stream-output-chunking-p encoding-stream) t))
                (with-retrying
                  (if (consp content)
-                     (dexador.body:write-multipart-content content boundary stream)
-                     (dexador.body:write-as-octets stream content))
+                     (dexador.body:write-multipart-content content boundary encoding-stream)
+                     (dexador.body:write-as-octets encoding-stream content))
                  (when chunkedp
-                   (setf (chunga:chunked-stream-output-chunking-p stream) nil))
-                 (finish-output stream))))
+                   (setf (chunga:chunked-stream-output-chunking-p encoding-stream) nil))
+                 (finish-output encoding-stream))))
 
          start-reading
            (multiple-value-bind (http body response-headers-data transfer-encoding-p)
