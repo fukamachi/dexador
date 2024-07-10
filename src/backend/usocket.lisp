@@ -75,12 +75,11 @@
                 :ensure-list
                 :ends-with-subseq)
   (:import-from :uiop)
-  (:export :request))
+  (:export :request
+           :*ca-bundle*))
 (in-package :dexador.backend.usocket)
 
-(defparameter *ca-bundle*
-  (uiop:native-namestring
-   (asdf:system-relative-pathname :dexador #P"certs/cacert.pem")))
+(defparameter *ca-bundle* nil)
 
 (defun-speedy read-until-crlf*2 (stream)
   (with-fast-output (buf)
