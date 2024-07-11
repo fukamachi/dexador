@@ -370,7 +370,7 @@
                                     :verify-location
                                     (cond
                                       (ca-path (uiop:native-namestring ca-path))
-                                      ((probe-file *ca-bundle*) *ca-bundle*)
+                                      ((and *ca-bundle* (probe-file *ca-bundle*)) *ca-bundle*)
                                       ;; In executable environment, perhaps *ca-bundle* doesn't exist.
                                       (t :default))))
           (ssl-cert-pem-p (and ssl-cert-file
