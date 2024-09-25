@@ -399,24 +399,6 @@
 (defmethod open-stream-p ((u usocket-wrapped-stream))
   (open-stream-p (usocket-wrapped-stream-stream u)))
 
-(defun socket-connect/retry (uri &key timeout)
-  (declare (ignorable timeout))
-  (let ((retried nil))
-    (tagbody
-     retry
-      (handler-bind (#+sbcl
-                     (sb-bsd-sockets:interrupted-error
-                       (lambda (e)
-                         (declare (ignore e))
-                         (unless retried
-                           (setf retried t)
-                           (go retry)))))
-        (return-from socket-connect/retry
-          (usocket:socket-connect (uri-host uri)
-                                  (uri-port uri)
-                                  #-(or ecl clasp clisp allegro) :timeout #-(or ecl clasp clisp allegro) timeout
-                                  :element-type '(unsigned-byte 8)))))))
-
 (defun-careful request (uri &rest args
                             &key (method :get) (version 1.1)
                             content headers
@@ -445,7 +427,10 @@
   (labels ((make-new-connection (uri)
              (restart-case
                  (let* ((con-uri (quri:uri (or proxy uri)))
-                        (connection (socket-connect/retry con-uri :timeout connect-timeout))
+                        (connection (usocket:socket-connect (uri-host con-uri)
+                                                            (uri-port con-uri)
+                                                            #-(or ecl clasp clisp allegro) :timeout #-(or ecl clasp clisp allegro) connect-timeout
+                                                            :element-type '(unsigned-byte 8)))
                         (stream
                           (usocket:socket-stream connection))
                         (scheme (uri-scheme uri)))
