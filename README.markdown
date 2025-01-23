@@ -243,6 +243,8 @@ All functions take similar arguments.
   - The headers of the request. If the value of a pair is `NIL`, the header won't be sent. You can overwrite the default headers (Host, User-Agent, Accept, Content-Type) by this with the same header name.
 - `basic-auth` (cons of username and password)
   - Username and password for basic authorization. This is a cons having username at car and password at cdr. (e.g. `'("foo" . "bar")`)
+- `bearer-auth` (token string)
+  - A string token, to add bearer auth header. 
 - `cookie-jar` (cookie-jar of [cl-cookie](https://github.com/fukamachi/cl-cookie))
   - A cookie jar object.
 - `connect-timeout` (fixnum)
