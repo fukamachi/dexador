@@ -32,13 +32,9 @@ jobs:
           curl -L https://raw.githubusercontent.com/roswell/roswell/master/scripts/install-for-ci.sh | sh
       - name: Install Ultralisp
         run: ros -e '(ql-dist:install-dist "http://dist.ultralisp.org/" :prompt nil)'
-      - name: Install Rove
-        run: ros install fukamachi/rove
       - name: Load Dexador
         run: |
           ros -e '(handler-bind ((error (lambda (e) (uiop:print-condition-backtrace e) (uiop:quit -1)))) (ql:quickload :dexador))'
       - name: Run tests
-        shell: bash
         run: |
-          PATH="~/.roswell/bin:/c/roswell/bin:$PATH"
-          rove dexador-test.asd
+          ros -e '(handler-bind ((error (lambda (e) (uiop:print-condition-backtrace e) (uiop:quit -1)))) (ql:quickload :dexador-test))' -e '(or (rove:run :dexador-test) (uiop:quit -1))'
