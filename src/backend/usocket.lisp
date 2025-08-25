@@ -73,7 +73,8 @@
                 :if-let
                 :when-let
                 :ensure-list
-                :ends-with-subseq)
+                :ends-with-subseq
+                :curry)
   (:import-from :uiop)
   (:export :request
            :*ca-bundle*))
@@ -636,176 +637,182 @@
                       (retry-request () :report "Retry the same request."
                         (return-from request (apply #'request uri args)))
                       (ignore-and-continue () :report "Ignore the error and continue."))))
-        (tagbody
-         retry
+        ;; The unwind-protect form always closes STREAM when exiting. If the
+        ;; body decides STREAM should not be closed, it should set the STREAM
+        ;; variable to NIL after done processing with it.
+        (unwind-protect
+             (tagbody
+              retry
 
-           (unless (open-stream-p stream)
-             (try-again-without-reusing-stream))
+                (unless (open-stream-p stream)
+                  (try-again-without-reusing-stream))
            
-           (with-retrying
-             (write-sequence first-line-data stream)
-             (write-sequence headers-data stream)
-             (when cookie-headers
-               (write-sequence cookie-headers stream))
-             (write-sequence +crlf+ stream)
-             (force-output stream))
+                (with-retrying
+                    (write-sequence first-line-data stream)
+                  (write-sequence headers-data stream)
+                  (when cookie-headers
+                    (write-sequence cookie-headers stream))
+                  (write-sequence +crlf+ stream)
+                  (force-output stream))
 
-           ;; Sending the content
-           (when content
-             (let ((encoding-stream (if chunkedp
-				       (chunga:make-chunked-stream stream)
-				       stream)))
-               (when chunkedp
-                 (setf (chunga:chunked-stream-output-chunking-p encoding-stream) t))
-               (with-retrying
-                 (if (consp content)
-                     (dexador.body:write-multipart-content content boundary encoding-stream)
-                     (dexador.body:write-as-octets encoding-stream content))
-                 (when chunkedp
-                   (setf (chunga:chunked-stream-output-chunking-p encoding-stream) nil))
-                 (finish-output encoding-stream))))
+                ;; Sending the content
+                (when content
+                  (let ((encoding-stream (if chunkedp
+				             (chunga:make-chunked-stream stream)
+				             stream)))
+                    (when chunkedp
+                      (setf (chunga:chunked-stream-output-chunking-p encoding-stream) t))
+                    (with-retrying
+                        (if (consp content)
+                            (dexador.body:write-multipart-content content boundary encoding-stream)
+                            (dexador.body:write-as-octets encoding-stream content))
+                      (when chunkedp
+                        (setf (chunga:chunked-stream-output-chunking-p encoding-stream) nil))
+                      (finish-output encoding-stream))))
 
-         start-reading
-           (multiple-value-bind (http body response-headers-data transfer-encoding-p)
-               (with-retrying
-                   (read-response stream (not (eq method :head)) verbose (not want-stream)))
-             (let* ((status (http-status http))
-                    (response-headers (http-headers http))
-                    (content-length (gethash "content-length" response-headers))
-                    (content-length (etypecase content-length
-                                      (null content-length)
-                                      (string (parse-integer content-length))
-                                      (integer content-length))))
-               (when (= status 0)
-                 (with-retrying
-                   (http-request-failed status
-                                        :body body
-                                        :headers headers
-                                        :uri uri
-                                        :method method)))
-               (when verbose
-                 (print-verbose-data :outgoing first-line-data headers-data cookie-headers +crlf+)
-                 (print-verbose-data :incoming response-headers-data))
-               (when cookie-jar
-                 (when-let (set-cookies (append (gethash "set-cookie" response-headers)
-                                                (ensure-list (gethash "set-cookie2" response-headers))))
-                   (merge-cookies cookie-jar
-                                  (remove nil (mapcar (lambda (cookie)
-                                                        (declare (type string cookie))
-                                                        (unless (= (length cookie) 0)
-                                                          (parse-set-cookie-header cookie
-                                                                                   (uri-host uri)
-                                                                                   (uri-path uri))))
-                                                      set-cookies)))))
-               (when (and (member status '(301 302 303 307 308) :test #'=)
-                          (gethash "location" response-headers)
-                          (/= max-redirects 0))
-                 ;; Need to read the response body
-                 (when (and want-stream
-                            (not (eq method :head)))
-                   (cond
-                     ((integerp content-length)
-                      (dotimes (i content-length)
-                        (loop until (read-byte body nil nil))))
-                     (transfer-encoding-p
-                       (read-until-crlf*2 body))))
-
-                 (let* ((location-uri (quri:uri (gethash "location" response-headers)))
-                        (same-server-p (or (null (uri-host location-uri))
-                                           (and (string= (uri-scheme location-uri)
-                                                         (uri-scheme uri))
-                                                (string= (uri-host location-uri)
-                                                         (uri-host uri))
-                                                (eql (uri-port location-uri)
-                                                     (uri-port uri))))))
-                   (if (and same-server-p
-                            (or (= status 307) (= status 308)
-                                (member method '(:get :head) :test #'eq)))
-                       (progn ;; redirection to the same host
-                         (setq uri (merge-uris location-uri uri))
-                         (setq first-line-data
-                               (with-fast-output (buffer)
-                                 (write-first-line method uri version buffer)))
-                         (when cookie-jar
-                           ;; Rebuild cookie-headers.
-                           (setq cookie-headers (build-cookie-headers uri cookie-jar)))
-                         (decf max-redirects)
-                         (if (equalp (gethash "connection" response-headers) "close")
-                             (try-again-without-reusing-stream)
-                             (progn
-                               (setq reusing-stream-p t)
-                               (go retry))))
-                       (progn ;; this is a redirection to a different host
-                         (setf location-uri (quri:merge-uris location-uri uri))
-                         ;; Close connection if it isn't from our connection pool or from the user and we aren't going to
-                         ;; pass it to our new call.
-                         (when (not same-server-p) (return-stream-to-pool-or-close stream (gethash "connection" response-headers) uri))
-                         (setf (getf args :headers)
-                               (nconc `((:host . ,(uri-host location-uri))) headers))
-                         (setf (getf args :max-redirects)
-                               (1- max-redirects))
-                         ;; Redirect as GET if it's 301, 302, 303
-                         (unless (or (= status 307) (= status 308)
-                                     (member method '(:get :head) :test #'eq))
-                           (setf (getf args :method) :get))
-                         (return-from request
-                           (apply #'request location-uri (if same-server-p
-                                                             args
-                                                             (progn (remf args :stream) args))))))))
-               (unwind-protect
-                    (let* ((keep-connection-alive (connection-keep-alive-p
-                                                   (gethash "connection" response-headers)))
-                           (body (convert-body body
-                                              (gethash "content-encoding" response-headers)
-                                              (gethash "content-type" response-headers)
-                                              content-length
-                                              transfer-encoding-p
-                                              force-binary
-                                              force-string
-                                              keep-connection-alive
-                                              (if (and use-connection-pool keep-connection-alive (not user-supplied-stream) (streamp body))
-                                                  (lambda (underlying-stream abort)
-                                                    (declare (ignore abort))
-                                                    (when (and underlying-stream (open-stream-p underlying-stream))
-                                                      ;; read any left overs the user may have not read (in case of errors on user side?)
-                                                      (loop while (ignore-errors (listen underlying-stream)) ;; ssl streams may close
-                                                            do (read-byte underlying-stream nil nil))
-                                                      (when (open-stream-p underlying-stream)
-                                                        (push-connection (format nil "~A://~A"
-                                                                                 (uri-scheme uri)
-                                                                                 (uri-authority uri)) underlying-stream #'close))))
-                                                  #'dexador.keep-alive-stream:keep-alive-stream-close-underlying-stream))))
-                      ;; Raise an error when the HTTP response status code is 4xx or 50x.
-                      (when (<= 400 status)
-                        (with-retrying
+              start-reading
+                (multiple-value-bind (http body response-headers-data transfer-encoding-p)
+                    (with-retrying
+                        (read-response stream (not (eq method :head)) verbose (not want-stream)))
+                  (let* ((status (http-status http))
+                         (response-headers (http-headers http))
+                         (content-length (gethash "content-length" response-headers))
+                         (content-length (etypecase content-length
+                                           (null content-length)
+                                           (string (parse-integer content-length))
+                                           (integer content-length))))
+                    (when (= status 0)
+                      (with-retrying
                           (http-request-failed status
                                                :body body
-                                               :headers response-headers
+                                               :headers headers
                                                :uri uri
                                                :method method)))
-                      ;; Have to be a little careful with the fifth value stream we return --
-                      ;; the user may be not aware that keep-alive t without use-connection-pool can leak
-                      ;; sockets, so we wrap the returned last value so when it is garbage
-                      ;; collected it gets closed.  If the user is getting a stream back as BODY,
-                      ;; then we instead add a finalizer to that stream to close it when garbage collected
-                      (return-from request
-                        (values body
-                                status
-                                response-headers
-                                uri
-                                (when (and keep-alive
-                                           (not (equalp (gethash "connection" response-headers) "close"))
-                                           (or (not use-connection-pool) user-supplied-stream))
-                                  (or (and original-user-supplied-stream ;; user provided a stream
-					   (if (usocket-wrapped-stream-p original-user-supplied-stream) ;; but, it came from us
-					       (eql (usocket-wrapped-stream-stream original-user-supplied-stream) stream) ;; and we used it
-					       (eql original-user-supplied-stream stream)) ;; user provided a bare stream
-					   original-user-supplied-stream) ;; return what the user sent without wrapping it
-                                      (if want-stream ;; add a finalizer to the body to close the stream
-                                          (progn
-                                            (trivial-garbage:finalize body (lambda () (close stream)))
-                                            stream)
-                                          (let ((wrapped-stream (make-usocket-wrapped-stream :stream stream)))
-                                            (trivial-garbage:finalize wrapped-stream (lambda () (close stream)))
-                                            wrapped-stream)))))))
-                 (finalize-connection stream (gethash "connection" response-headers) uri))))))))))
+                    (when verbose
+                      (print-verbose-data :outgoing first-line-data headers-data cookie-headers +crlf+)
+                      (print-verbose-data :incoming response-headers-data))
+                    (when cookie-jar
+                      (when-let (set-cookies (append (gethash "set-cookie" response-headers)
+                                                     (ensure-list (gethash "set-cookie2" response-headers))))
+                        (merge-cookies cookie-jar
+                                       (remove nil (mapcar (lambda (cookie)
+                                                             (declare (type string cookie))
+                                                             (unless (= (length cookie) 0)
+                                                               (parse-set-cookie-header cookie
+                                                                                        (uri-host uri)
+                                                                                        (uri-path uri))))
+                                                           set-cookies)))))
+                    (when (and (member status '(301 302 303 307 308) :test #'=)
+                               (gethash "location" response-headers)
+                               (/= max-redirects 0))
+                      ;; Need to read the response body
+                      (when (and want-stream
+                                 (not (eq method :head)))
+                        (cond
+                          ((integerp content-length)
+                           (dotimes (i content-length)
+                             (loop until (read-byte body nil nil))))
+                          (transfer-encoding-p
+                           (read-until-crlf*2 body))))
+
+                      (let* ((location-uri (quri:uri (gethash "location" response-headers)))
+                             (same-server-p (or (null (uri-host location-uri))
+                                                (and (string= (uri-scheme location-uri)
+                                                              (uri-scheme uri))
+                                                     (string= (uri-host location-uri)
+                                                              (uri-host uri))
+                                                     (eql (uri-port location-uri)
+                                                          (uri-port uri))))))
+                        (if (and same-server-p
+                                 (or (= status 307) (= status 308)
+                                     (member method '(:get :head) :test #'eq)))
+                            (progn ;; redirection to the same host
+                              (setq uri (merge-uris location-uri uri))
+                              (setq first-line-data
+                                    (with-fast-output (buffer)
+                                      (write-first-line method uri version buffer)))
+                              (when cookie-jar
+                                ;; Rebuild cookie-headers.
+                                (setq cookie-headers (build-cookie-headers uri cookie-jar)))
+                              (decf max-redirects)
+                              (if (equalp (gethash "connection" response-headers) "close")
+                                  (try-again-without-reusing-stream)
+                                  (progn
+                                    (setq reusing-stream-p t)
+                                    (go retry))))
+                            (progn ;; this is a redirection to a different host
+                              (setf location-uri (quri:merge-uris location-uri uri))
+                              ;; Close connection if it isn't from our connection pool or from the user and we aren't going to
+                              ;; pass it to our new call.
+                              (when (not same-server-p) (return-stream-to-pool-or-close stream (gethash "connection" response-headers) uri))
+                              (setf (getf args :headers)
+                                    (nconc `((:host . ,(uri-host location-uri))) headers))
+                              (setf (getf args :max-redirects)
+                                    (1- max-redirects))
+                              ;; Redirect as GET if it's 301, 302, 303
+                              (unless (or (= status 307) (= status 308)
+                                          (member method '(:get :head) :test #'eq))
+                                (setf (getf args :method) :get))
+                              (return-from request
+                                (apply #'request location-uri (if same-server-p
+                                                                  args
+                                                                  (progn (remf args :stream) args))))))))
+                    (unwind-protect
+                         (let* ((keep-connection-alive (connection-keep-alive-p
+                                                        (gethash "connection" response-headers)))
+                                (body (convert-body body
+                                                    (gethash "content-encoding" response-headers)
+                                                    (gethash "content-type" response-headers)
+                                                    content-length
+                                                    transfer-encoding-p
+                                                    force-binary
+                                                    force-string
+                                                    keep-connection-alive
+                                                    (if (and use-connection-pool keep-connection-alive (not user-supplied-stream) (streamp body))
+                                                        (lambda (underlying-stream abort)
+                                                          (declare (ignore abort))
+                                                          (when (and underlying-stream (open-stream-p underlying-stream))
+                                                            ;; read any left overs the user may have not read (in case of errors on user side?)
+                                                            (loop while (ignore-errors (listen underlying-stream)) ;; ssl streams may close
+                                                                  do (read-byte underlying-stream nil nil))
+                                                            (when (open-stream-p underlying-stream)
+                                                              (push-connection (format nil "~A://~A"
+                                                                                       (uri-scheme uri)
+                                                                                       (uri-authority uri)) underlying-stream #'close))))
+                                                        #'dexador.keep-alive-stream:keep-alive-stream-close-underlying-stream))))
+                           ;; Raise an error when the HTTP response status code is 4xx or 50x.
+                           (when (<= 400 status)
+                             (with-retrying
+                                 (http-request-failed status
+                                                      :body body
+                                                      :headers response-headers
+                                                      :uri uri
+                                                      :method method)))
+                           ;; Have to be a little careful with the fifth value stream we return --
+                           ;; the user may be not aware that keep-alive t without use-connection-pool can leak
+                           ;; sockets, so we wrap the returned last value so when it is garbage
+                           ;; collected it gets closed.  If the user is getting a stream back as BODY,
+                           ;; then we instead add a finalizer to that stream to close it when garbage collected
+                           (return-from request
+                             (values body
+                                     status
+                                     response-headers
+                                     uri
+                                     (when (and keep-alive
+                                                (not (equalp (gethash "connection" response-headers) "close"))
+                                                (or (not use-connection-pool) user-supplied-stream))
+                                       (or (and original-user-supplied-stream ;; user provided a stream
+					        (if (usocket-wrapped-stream-p original-user-supplied-stream) ;; but, it came from us
+					            (eql (usocket-wrapped-stream-stream original-user-supplied-stream) stream) ;; and we used it
+					            (eql original-user-supplied-stream stream)) ;; user provided a bare stream
+					        original-user-supplied-stream) ;; return what the user sent without wrapping it
+                                           (if want-stream ;; add a finalizer to the body to close the stream
+                                               (progn
+                                                 (trivial-garbage:finalize body (curry #'close stream))
+                                                 stream)
+                                               (let ((wrapped-stream (make-usocket-wrapped-stream :stream stream)))
+                                                 (trivial-garbage:finalize wrapped-stream (curry #'close stream))
+                                                 wrapped-stream)))))))
+                      (finalize-connection stream (gethash "connection" response-headers) uri)
+                      (setq stream nil)))))
+          (when stream (close stream))))))))
