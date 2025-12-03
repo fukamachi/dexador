@@ -119,6 +119,7 @@
          (content-type
            (find :content-type headers :key #'car :test #'string-equal))
          (multipart-p (or (and content-type
+							   (>= (length content-type) 10)
                                (string= (cdr content-type) "multipart/" :end1 10))
                           (and (null (cdr content-type))
                                (consp content)
