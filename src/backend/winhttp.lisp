@@ -117,21 +117,21 @@
                    ca-path))
   (let* ((uri (quri:uri uri))
          (content-type
-           (find :content-type headers :key #'car :test #'string-equal))
+           (cdr (find :content-type headers :key #'car :test #'string-equal)))
          (multipart-p (or (and content-type
 							   (>= (length content-type) 10)
-                               (string= (cdr content-type) "multipart/" :end1 10))
-                          (and (null (cdr content-type))
+                               (string= content-type "multipart/" :end1 10))
+                          (and (null content-type)
                                (consp content)
                                (find-if #'pathnamep content :key #'cdr))))
-         (form-urlencoded-p (or (string= (cdr content-type) "application/x-www-form-urlencoded")
-                                (and (null (cdr content-type))
+         (form-urlencoded-p (or (string= content-type "application/x-www-form-urlencoded")
+                                (and (null content-type)
                                      (consp content)
                                      (not multipart-p))))
          (user-agent
            (cdr (find :user-agent headers :key #'car :test #'string-equal))))
     (multiple-value-bind (content detected-content-type)
-        (convert-content content multipart-p form-urlencoded-p (cdr content-type))
+        (convert-content content multipart-p form-urlencoded-p content-type)
       (when detected-content-type
         (if content-type
             (setf (cdr (assoc :content-type headers :test #'string-equal)) detected-content-type)
