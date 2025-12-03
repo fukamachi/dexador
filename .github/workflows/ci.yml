@@ -19,6 +19,7 @@ jobs:
       - uses: actions/checkout@v1
       - name: Run tests
         run: make test
+
   test_mac:
     name: ${{ matrix.lisp }} on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
@@ -42,3 +43,36 @@ jobs:
         run: |
           PATH="~/.roswell/bin:$PATH"
           rove dexador-test.asd
+
+  test_windows:
+    name: ${{ matrix.lisp }} on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        lisp: [sbcl-bin]
+        os: [windows-latest]
+    defaults:
+      run:
+        shell: msys2 {0}
+
+    steps:
+      - uses: actions/checkout@v1
+      - name: Set up MSYS2
+        uses: msys2/setup-msys2@v2
+        with:
+          update: true
+          install: mingw-w64-x86_64-openssl
+      - name: Install Roswell
+        env:
+          LISP: ${{ matrix.lisp }}
+          ROSWELL_INSTALL_DIR: /c/roswell
+        run: |
+          curl -L https://raw.githubusercontent.com/roswell/roswell/master/scripts/install-for-ci.sh | sh
+      - name: Install Ultralisp
+        run: ros -e '(ql-dist:install-dist "http://dist.ultralisp.org/" :prompt nil)'
+      - name: Load Dexador
+        run: |
+          ros -e '(handler-bind ((error (lambda (e) (uiop:print-condition-backtrace e) (uiop:quit -1)))) (ql:quickload :dexador))'
+      - name: Run tests
+        run: |
+          ros -e '(handler-bind ((error (lambda (e) (uiop:print-condition-backtrace e) (uiop:quit -1)))) (ql:quickload :dexador-test))' -e '(or (rove:run :dexador-test) (uiop:quit -1))'
