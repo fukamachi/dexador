@@ -42,8 +42,16 @@
 keep-alive-stream), and should handle clean-up of it"
   (assert (xor end chunked-stream))
   (if chunked-stream
-      (make-instance 'keep-alive-chunked-stream :stream stream :chunga-stream chunked-stream :on-close-or-eof on-close-or-eof)
-      (make-instance 'keep-alive-stream :stream stream :end end :on-close-or-eof on-close-or-eof)))
+      (make-instance 'keep-alive-chunked-stream
+                     :stream stream
+                     :chunga-stream chunked-stream
+                     :on-close-or-eof on-close-or-eof
+                     #+allegro :element-type #+allegro '(unsigned-byte 8))
+      (make-instance 'keep-alive-stream
+                     :stream stream
+                     :end end
+                     :on-close-or-eof on-close-or-eof
+                     #+allegro :element-type #+allegro '(unsigned-byte 8))))
 
 (defun maybe-close (stream &optional (close-if nil))
   "Will close the underlying stream if close-if is T (unless it is already closed).
