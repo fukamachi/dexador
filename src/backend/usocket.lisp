@@ -719,10 +719,11 @@
                              (same-server-p (or (null (uri-host location-uri))
                                                 (and (string= (uri-scheme location-uri)
                                                               (uri-scheme uri))
-                                                     (string= (uri-host location-uri)
-                                                              (uri-host uri))
+                                                     (string-equal (uri-host location-uri)
+                                                                   (uri-host uri))
                                                      (eql (uri-port location-uri)
                                                           (uri-port uri))))))
+                        (setf (quri:uri-userinfo location-uri) nil)
                         (if (and same-server-p
                                  (or (= status 307) (= status 308)
                                      (member method '(:get :head) :test #'eq)))
@@ -756,7 +757,19 @@
                               (return-from request
                                 (apply #'request location-uri (if same-server-p
                                                                   args
-                                                                  (progn (remf args :stream) args))))))))
+                                                                  (progn
+                                                                    (remf args :stream)
+                                                                    (remf args :basic-auth)
+                                                                    (remf args :bearer-auth)
+                                                                    ; Do not forward credentials to a different host — prevents leaking auth tokens to redirect targets.
+                                                                    (setf (getf args :headers)
+                                                                          (remove-if (lambda (h)
+                                                                                       (let ((name (car h)))
+                                                                                         (or (string-equal name :authorization)
+                                                                                             (string-equal name "proxy-authorization")
+                                                                                             (string-equal name "cookie"))))
+                                                                                     (getf args :headers)))
+                                                                    args))))))))
                     (unwind-protect
                          (let* ((keep-connection-alive (connection-keep-alive-p
                                                         (gethash "connection" response-headers)))

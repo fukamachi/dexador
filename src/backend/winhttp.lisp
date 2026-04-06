@@ -207,25 +207,37 @@
               (when (and (member status '(301 302 303 307 308))
                          (gethash "location" response-headers)
                          (/= max-redirects 0))
-                (let ((location-uri (quri:uri (gethash "location" response-headers))))
-                  (let ((method
-                          (if (and (or (null (quri:uri-host location-uri))
-                                       (and (string= (quri:uri-scheme location-uri)
-                                                     (quri:uri-scheme uri))
-                                            (string= (quri:uri-host location-uri)
-                                                     (quri:uri-host uri))
-                                            (eql (quri:uri-port location-uri)
-                                                 (quri:uri-port uri))))
-                                   (or (= status 307) (= status 308)
-                                       (member method '(:get :head) :test #'eq)))
-                              method
-                              :get)))
-                    ;; TODO: slurp the body
-                    (return-from request
-                                 (apply #'request (quri:merge-uris location-uri uri)
-                                        :max-redirects (1- max-redirects)
-                                        :method method
-                                        args)))))
+                (let* ((location-uri (quri:uri (gethash "location" response-headers)))
+                       (same-server-p (or (null (quri:uri-host location-uri))
+                                          (and (string= (quri:uri-scheme location-uri)
+                                                        (quri:uri-scheme uri))
+                                               (string-equal (quri:uri-host location-uri)
+                                                             (quri:uri-host uri))
+                                               (eql (quri:uri-port location-uri)
+                                                    (quri:uri-port uri)))))
+                       (method
+                         (if (or (= status 307) (= status 308)
+                                 (member method '(:get :head) :test #'eq))
+                             method
+                             :get)))
+                  (setf (quri:uri-userinfo location-uri) nil)
+                  ;; TODO: slurp the body
+                  (unless same-server-p
+                    (remf args :basic-auth)
+                    (remf args :bearer-auth)
+                    ; Do not forward credentials to a different host — prevents leaking auth tokens to redirect targets.
+                    (setf (getf args :headers)
+                          (remove-if (lambda (h)
+                                       (let ((name (car h)))
+                                         (or (string-equal name :authorization)
+                                             (string-equal name "proxy-authorization")
+                                             (string-equal name "cookie"))))
+                                     (getf args :headers))))
+                  (return-from request
+                               (apply #'request (quri:merge-uris location-uri uri)
+                                      :max-redirects (1- max-redirects)
+                                      :method method
+                                      args))))
 
               (let ((body (with-fast-output (body :vector)
                             (loop with buffer = (make-array 1024 :element-type '(unsigned-byte 8))

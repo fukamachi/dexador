@@ -204,6 +204,64 @@
         (ok (equal body "POST"))
         (ok (equal (quri:uri-path uri) "/200"))))))
 
+(deftest cross-host-redirect-credential-stripping-tests
+  #+windows
+  (skip "Cross-host redirect credential tests use usocket backend only")
+  #-windows
+  ;; Outer server: target that echoes back the Authorization header (or empty string)
+  (testing-app ("cross-host redirect target")
+      (lambda (env)
+        (let ((auth (or (gethash "authorization" (getf env :headers)) "")))
+          `(200 (:content-length ,(length auth)) (,auth))))
+    (let ((target-port *clack-test-port*))
+      ;; Inner server: redirects all requests to the target server (different port = different host)
+      (testing-app ("cross-host redirect origin")
+          (lambda (env)
+            (declare (ignore env))
+            `(302 (:location ,(format nil "http://127.0.0.1:~A/" target-port)) ()))
+        (let ((dexador.util:*default-proxy* nil))
+          (testing "basic-auth is stripped on cross-host redirect"
+            (multiple-value-bind (body code)
+                (dex:get (localhost "/") :basic-auth '("user" . "pass"))
+              (ok (eql code 200))
+              (ok (equal body "") "Authorization header must not reach the target")))
+          (testing "bearer-auth is stripped on cross-host redirect"
+            (multiple-value-bind (body code)
+                (dex:get (localhost "/") :bearer-auth "my-secret-token")
+              (ok (eql code 200))
+              (ok (equal body "") "Authorization header must not reach the target")))
+          (testing "keyword :authorization header is stripped on cross-host redirect"
+            (multiple-value-bind (body code)
+                (dex:get (localhost "/") :headers '((:authorization . "Bearer explicit")))
+              (ok (eql code 200))
+              (ok (equal body "") "Authorization header must not reach the target")))
+          (testing "string Authorization header is stripped on cross-host redirect"
+            (multiple-value-bind (body code)
+                (dex:get (localhost "/") :headers '(("Authorization" . "Bearer string-key")))
+              (ok (eql code 200))
+              (ok (equal body "") "Authorization header must not reach the target"))))))))
+
+(deftest same-host-redirect-credential-preservation-tests
+  #+windows
+  (skip "Same-host redirect credential preservation tests use usocket backend only")
+  #-windows
+  ;; Single server: /redirect-post returns 301 to /echo-auth; /echo-auth echoes Authorization header
+  (testing-app ("same-host redirect credential preservation")
+      (lambda (env)
+        (cond
+          ((string= (getf env :path-info) "/redirect-post")
+           '(301 (:location "/echo-auth") ()))
+          ((string= (getf env :path-info) "/echo-auth")
+           (let ((auth (or (gethash "authorization" (getf env :headers)) "")))
+             `(200 (:content-length ,(length auth)) (,auth))))
+          (t '(404 () ()))))
+    (let ((dexador.util:*default-proxy* nil))
+      (testing "basic-auth preserved on same-host POST 301 redirect (method-change case)"
+        (multiple-value-bind (body code)
+            (dex:post (localhost "/redirect-post") :basic-auth '("user" . "pass"))
+          (ok (eql code 200))
+          (ok (not (equal body "")) "Authorization header must be preserved on same-host redirect"))))))
+
 (deftest content-disposition-tests
   #+windows
   (skip "Content-Disposition tests are skipped")
