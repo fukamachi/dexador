@@ -8,7 +8,7 @@
 |#
 
 (defsystem "dexador"
-  :version "0.9.15"
+  :version "0.9.16"
   :author "Eitaro Fukamachi"
   :license "MIT"
   :defsystem-depends-on ("trivial-features")
