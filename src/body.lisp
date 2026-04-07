@@ -71,13 +71,13 @@
               #\Return #\Newline))))
 
 (defmacro define-alist-cache (cache-name)
-  (let ((var (intern (format nil "*~A*" cache-name))))
+  (let ((var (intern (format nil "*~@:(~A~)*" cache-name))))
   `(progn
      (defvar ,var)
-     (defun ,(intern (format nil "LOOKUP-IN-~A" cache-name)) (elt)
+     (defun ,(intern (format nil "LOOKUP-IN-~@:(~A~)" cache-name)) (elt)
        (when (boundp ',var)
          (alexandria:assoc-value ,var elt)))
-     (defun (setf ,(intern (format nil "LOOKUP-IN-~A" cache-name))) (val elt)
+     (defun (setf ,(intern (format nil "LOOKUP-IN-~@:(~A~)" cache-name))) (val elt)
        (when (boundp ',var)
          (setf (alexandria:assoc-value ,var elt) val))
        val))))
