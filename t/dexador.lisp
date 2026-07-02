@@ -89,7 +89,7 @@
         (ok (equal body (format nil "lisp.org~%/foo")))))))
 
 (deftest proxy-resolution-tests
-  (testing "per-scheme proxies alist (requests-style proxies dict)"
+  (testing "per-scheme proxy alist"
     (let ((cfg '(("https" . "http://p-https:8080")
                  ("http"  . "http://p-http:8080")
                  ("https://special.example.com" . "http://p-host:9090")
@@ -103,7 +103,7 @@
   (testing "string proxy applies to every scheme (backward compatible)"
     (ok (equal (dexador.util:resolve-proxy "https://x.com/" "http://oneproxy:3128") "http://oneproxy:3128"))
     (ok (null (dexador.util:resolve-proxy "https://x.com/" nil))))
-  (testing "NO_PROXY host matching (urllib/requests semantics)"
+  (testing "NO_PROXY host matching"
     (ok (dexador.util:host-bypassed-p "example.com" "example.com"))
     (ok (dexador.util:host-bypassed-p "api.example.com" ".example.com"))
     (ok (dexador.util:host-bypassed-p "api.example.com" "example.com"))
@@ -112,7 +112,7 @@
     (ok (dexador.util:host-bypassed-p "example.com" "example.com:443") ":port in pattern is ignored")
     (ok (dexador.util:host-bypassed-p "a.foo.org" '("bar.com" ".foo.org")) "list form")
     (ng (dexador.util:host-bypassed-p "a.foo.org" nil)))
-  (testing "NO_PROXY IP and CIDR matching (requests semantics, plus IPv6)"
+  (testing "NO_PROXY IP and CIDR matching"
     (ok (dexador.util:host-bypassed-p "127.0.0.1" "127.0.0.1"))
     (ok (dexador.util:host-bypassed-p "127.0.0.1" "127.0.0.1:8080") ":port on an IP pattern is ignored")
     (ok (dexador.util:host-bypassed-p "10.1.2.3" "10.0.0.0/8"))

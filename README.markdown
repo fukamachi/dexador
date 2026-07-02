@@ -226,9 +226,8 @@ You can set the default proxy by setting `dex:*default-proxy*`, which defaults t
 environment variables `https_proxy` / `http_proxy` (with an `all_proxy` fallback).
 
 `:proxy` (and `dex:*default-proxy*`) may also be an alist mapping a scheme,
-`scheme://host`, or `"*"`/`"all"` to a proxy URL — the Common Lisp equivalent of the
-`proxies` dict in Python's *requests*. The most specific key wins (`scheme://host`, then
-scheme, then `"*"`):
+`scheme://host`, or `"*"`/`"all"` to a proxy URL. The most specific key wins
+(`scheme://host`, then scheme, then `"*"`):
 
 ```common-lisp
 (setf dex:*default-proxy*
@@ -297,7 +296,7 @@ All functions take similar arguments.
 - `want-stream` (boolean)
   - A flag to get the response body as a stream.
 - `proxy` (string or scheme/host alist)
-  - Proxy to use. A URL string (applied to every scheme) or a *requests*-style alist mapping a scheme / `scheme://host` / `"*"` to a proxy URL. Defaults to `dex:*default-proxy*` (seeded from `https_proxy` / `http_proxy` / `all_proxy`). Hosts matching `dex:*no-proxy*` (seeded from `no_proxy`) bypass the proxy. Not supported on Windows currently.
+  - Proxy to use. A URL string (applied to every scheme) or an alist mapping a scheme / `scheme://host` / `"*"` to a proxy URL. Defaults to `dex:*default-proxy*` (seeded from `https_proxy` / `http_proxy` / `all_proxy`). Hosts matching `dex:*no-proxy*` (seeded from `no_proxy`) bypass the proxy. Not supported on Windows currently.
 - `insecure` (boolean)
   - To bypass SSL certificate verification (use at your own risk). The default is `NIL`, the value of `*not-verify-ssl*`.
 <!-- - `ca-path` -->
