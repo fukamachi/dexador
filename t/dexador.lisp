@@ -88,6 +88,49 @@
         (ok (eql code 200))
         (ok (equal body (format nil "lisp.org~%/foo")))))))
 
+(deftest proxy-resolution-tests
+  (testing "per-scheme proxies alist (requests-style proxies dict)"
+    (let ((cfg '(("https" . "http://p-https:8080")
+                 ("http"  . "http://p-http:8080")
+                 ("https://special.example.com" . "http://p-host:9090")
+                 ("*"     . "http://p-all:1080"))))
+      (ok (equal (dexador.util:resolve-proxy "https://api.example.com/x" cfg) "http://p-https:8080"))
+      (ok (equal (dexador.util:resolve-proxy "http://api.example.com/x" cfg) "http://p-http:8080"))
+      (ok (equal (dexador.util:resolve-proxy "https://special.example.com/y" cfg) "http://p-host:9090")
+          "per-host key wins over per-scheme")
+      (ok (equal (dexador.util:resolve-proxy "ftp://files.example.com/z" cfg) "http://p-all:1080")
+          "falls back to \"*\"")))
+  (testing "string proxy applies to every scheme (backward compatible)"
+    (ok (equal (dexador.util:resolve-proxy "https://x.com/" "http://oneproxy:3128") "http://oneproxy:3128"))
+    (ok (null (dexador.util:resolve-proxy "https://x.com/" nil))))
+  (testing "NO_PROXY host matching (urllib/requests semantics)"
+    (ok (dexador.util:host-bypassed-p "example.com" "example.com"))
+    (ok (dexador.util:host-bypassed-p "api.example.com" ".example.com"))
+    (ok (dexador.util:host-bypassed-p "api.example.com" "example.com"))
+    (ng (dexador.util:host-bypassed-p "notexample.com" "example.com") "suffix must align on a dot")
+    (ok (dexador.util:host-bypassed-p "anything.net" "*") "\"*\" bypasses all")
+    (ok (dexador.util:host-bypassed-p "example.com" "example.com:443") ":port in pattern is ignored")
+    (ok (dexador.util:host-bypassed-p "a.foo.org" '("bar.com" ".foo.org")) "list form")
+    (ng (dexador.util:host-bypassed-p "a.foo.org" nil)))
+  (testing "NO_PROXY IP and CIDR matching (requests semantics, plus IPv6)"
+    (ok (dexador.util:host-bypassed-p "127.0.0.1" "127.0.0.1"))
+    (ok (dexador.util:host-bypassed-p "127.0.0.1" "127.0.0.1:8080") ":port on an IP pattern is ignored")
+    (ok (dexador.util:host-bypassed-p "10.1.2.3" "10.0.0.0/8"))
+    (ok (dexador.util:host-bypassed-p "192.168.1.7" "no-match.com, 192.168.0.0/16"))
+    (ng (dexador.util:host-bypassed-p "11.1.2.3" "10.0.0.0/8"))
+    (ng (dexador.util:host-bypassed-p "10.1.2.3" "example.com") "IP host never matches a hostname pattern")
+    (ng (dexador.util:host-bypassed-p "1.2.3.4" "2.3.4") "IP host requires IP/CIDR match, not a suffix")
+    (ok (dexador.util:host-bypassed-p "::1" "::1"))
+    (ok (dexador.util:host-bypassed-p "[::1]" "::1") "bracketed URL form of the host")
+    (ok (dexador.util:host-bypassed-p "::1" "0:0:0:0:0:0:0:1") "IPv6 compared numerically")
+    (ok (dexador.util:host-bypassed-p "fd12:3456::1" "fd00::/8"))
+    (ng (dexador.util:host-bypassed-p "2001:db8::1" "fd00::/8"))
+    (ng (dexador.util:host-bypassed-p "127.0.0.1" "::1") "no cross-family match"))
+  (testing "resolve-proxy honors no-proxy (bypass yields NIL)"
+    (let ((dexador.util:*no-proxy* "internal.example.com"))
+      (ok (null (dexador.util:resolve-proxy "https://internal.example.com/" "http://p:8080")))
+      (ok (equal (dexador.util:resolve-proxy "https://external.com/" "http://p:8080") "http://p:8080")))))
+
 (deftest proxy-socks5-tests
   #+windows
   (skip "SOCKS5 proxy tests are skipped")

@@ -10,11 +10,18 @@
                 :uri-query
                 :uri-host
                 :uri-port
+                :uri-scheme
                 :render-uri)
+  (:import-from :usocket
+                :ipv6-host-to-vector)
   (:export :*default-connect-timeout*
            :*default-read-timeout*
            :*verbose*
            :*default-proxy*
+           :*no-proxy*
+           :resolve-proxy
+           :host-bypassed-p
+           :strip-ipv6-brackets
            :*not-verify-ssl*
            :defun-speedy
            :defun-careful
@@ -33,10 +40,154 @@
 (defvar *default-read-timeout* 10)
 (defvar *verbose* nil)
 (defvar *not-verify-ssl* nil)
-(defvar *default-proxy* (or #-windows (uiop:getenv "HTTPS_PROXY")
-                            #-windows (uiop:getenv "HTTP_PROXY"))
-  "If specified will be used as the default value of PROXY in calls to dexador.  Defaults to
- the value of the environment variable HTTPS_PROXY or HTTP_PROXY if not on Windows.")
+(defun getenv-nonempty (&rest names)
+  "Return the first non-empty environment variable value among NAMES, or NIL."
+  (loop for name in names
+        thereis (let ((v (uiop:getenv name)))
+                  (and v (plusp (length v)) v))))
+
+(defun environment-proxy ()
+  "Build a proxy configuration from the environment, Python-requests style.
+Reads per-scheme https_proxy/http_proxy (lower- and upper-case) plus an all_proxy
+fallback. Returns an alist mapping \"https\"/\"http\"/\"*\" to proxy URLs, or NIL."
+  #+windows nil
+  #-windows
+  (let ((https (getenv-nonempty "https_proxy" "HTTPS_PROXY"))
+        (http  (getenv-nonempty "http_proxy" "HTTP_PROXY"))
+        (all   (getenv-nonempty "all_proxy" "ALL_PROXY")))
+    (remove nil (list (and https (cons "https" https))
+                      (and http (cons "http" http))
+                      (and all (cons "*" all))))))
+
+(defvar *default-proxy* (environment-proxy)
+  "Default proxy used by dexador, Python-requests style. Either:
+ - NIL (no proxy),
+ - a proxy URL string (used for every scheme), or
+ - an alist mapping \"http\"/\"https\"/\"scheme://host\"/\"*\" (or \"all\") to proxy URLs.
+Defaults from the environment (https_proxy / http_proxy with an all_proxy fallback).
+Honors *NO-PROXY*. A proxy URL may carry credentials as user:pass@host and may use the
+socks5:// scheme.")
+
+(defvar *no-proxy* (getenv-nonempty "no_proxy" "NO_PROXY")
+  "Hosts that bypass the proxy (cf. NO_PROXY). A comma/space-separated string or a list of
+patterns. \"*\" bypasses every host. An IP host is compared against IP and CIDR patterns
+(e.g. \"127.0.0.1\", \"10.0.0.0/8\", \"::1\", \"fd00::/8\"); any other host matches a
+pattern exactly or as a domain suffix (a leading dot and any :port in a pattern are
+ignored). Defaults from the no_proxy / NO_PROXY environment variable.")
+
+(defun strip-ipv6-brackets (host)
+  "Return HOST without RFC 2732 brackets: \"[::1]\" or \"[::1]:8080\" -> \"::1\"."
+  (or (and (plusp (length host))
+           (char= (char host 0) #\[)
+           (let ((close (position #\] host)))
+             (and close (subseq host 1 close))))
+      host))
+
+(defun parse-ip-address (string)
+  "Parse STRING as an IPv4 or IPv6 literal (IPv6 may be bracketed).
+Returns (VALUES address-integer total-bits) with TOTAL-BITS 32 or 128, or NIL when
+STRING is not an IP literal."
+  (let ((string (strip-ipv6-brackets string)))
+    (if (find #\: string)
+        (let ((bytes (ignore-errors (ipv6-host-to-vector string))))
+          (when bytes
+            (values (reduce (lambda (acc byte) (logior (ash acc 8) byte))
+                            bytes :initial-value 0)
+                    128)))
+        (let ((parts (uiop:split-string string :separator ".")))
+          (when (= (length parts) 4)
+            (loop with address = 0
+                  for part in parts
+                  for byte = (and (<= 1 (length part) 3)
+                                  (every #'digit-char-p part)
+                                  (parse-integer part))
+                  unless (and byte (<= byte 255))
+                    do (return nil)
+                  do (setf address (logior (ash address 8) byte))
+                  finally (return (values address 32))))))))
+
+(defun ip-in-network-p (address total-bits pattern)
+  "True if the IP (ADDRESS integer of TOTAL-BITS) lies in the CIDR network PATTERN,
+e.g. \"10.0.0.0/8\" or \"2001:db8::/32\". Host bits set in PATTERN are masked off."
+  (let ((slash (position #\/ pattern)))
+    (when slash
+      (multiple-value-bind (network network-bits)
+          (parse-ip-address (subseq pattern 0 slash))
+        (let ((prefix (ignore-errors (parse-integer (subseq pattern (1+ slash))))))
+          (and network
+               (eql total-bits network-bits)
+               (integerp prefix)
+               (<= 0 prefix network-bits)
+               (= (ash address (- prefix network-bits))
+                  (ash network (- prefix network-bits)))))))))
+
+(defun ip-matches-pattern-p (address total-bits pattern)
+  "True if the IP (ADDRESS integer of TOTAL-BITS) matches PATTERN: a CIDR network, or an
+IP literal compared numerically (so \"::1\" matches \"0:0:0:0:0:0:0:1\"). A :port suffix
+is ignored on IPv4 and bracketed IPv6 patterns."
+  (if (find #\/ pattern)
+      (ip-in-network-p address total-bits pattern)
+      (multiple-value-bind (pattern-address pattern-bits)
+          (parse-ip-address
+           (let ((colon (position #\: pattern)))
+             (if (and colon (not (find #\: pattern :start (1+ colon))))
+                 (subseq pattern 0 colon) ; single colon: an IPv4 :port suffix
+                 pattern)))
+        (and pattern-address
+             (eql total-bits pattern-bits)
+             (= address pattern-address)))))
+
+(defun host-bypassed-p (host no-proxy)
+  "True if HOST should bypass the proxy according to NO-PROXY (NO_PROXY semantics).
+NO-PROXY is a comma/space-separated string or a list of patterns. \"*\" bypasses
+everything. An IP host matches IP/CIDR patterns; a hostname matches exactly or as a
+domain suffix."
+  (when (and host no-proxy)
+    (let ((host (strip-ipv6-brackets host))
+          (patterns (if (listp no-proxy)
+                        no-proxy
+                        (remove "" (mapcar (lambda (s) (string-trim '(#\Space #\Tab) s))
+                                           (uiop:split-string no-proxy :separator ", "))
+                                :test #'string=))))
+      (multiple-value-bind (address total-bits) (parse-ip-address host)
+        (some (lambda (raw)
+                (and (plusp (length raw))
+                     (or (string= raw "*")
+                         (if address
+                             (ip-matches-pattern-p address total-bits raw)
+                             ;; Drop a leading dot and any :port, e.g. ".example.com:443"
+                             ;; -> "example.com", then match exactly or as domain suffix.
+                             (let* ((dotless (string-left-trim "." raw))
+                                    (pattern (subseq dotless 0 (position #\: dotless))))
+                               (or (string-equal host pattern)
+                                   (let ((pl (length pattern)) (hl (length host)))
+                                     (and (plusp pl)
+                                          (> hl pl)
+                                          (char= (char host (- hl pl 1)) #\.)
+                                          (string-equal pattern (subseq host (- hl pl)))))))))))
+              patterns)))))
+
+(defun proxy-for-uri (uri proxy)
+  "Select the proxy URL for URI from PROXY (NIL, a URL string, or a scheme/host alist)."
+  (etypecase proxy
+    (null nil)
+    (string proxy)
+    (list
+     (let* ((scheme (uri-scheme uri))
+            (host (uri-host uri))
+            (host-key (and scheme host (format nil "~A://~A" scheme host))))
+       (cdr (or (and host-key (assoc host-key proxy :test #'string-equal))
+                (and scheme (assoc scheme proxy :test #'string-equal))
+                (assoc "*" proxy :test #'string-equal)
+                (assoc "all" proxy :test #'string-equal)))))))
+
+(defun resolve-proxy (uri proxy &optional (no-proxy *no-proxy*))
+  "Return the effective proxy URL string for URI, or NIL.
+PROXY is NIL, a URL string, or a scheme/host alist (see *DEFAULT-PROXY*). Returns NIL when
+URI's host matches NO-PROXY."
+  (let ((u (quri:uri uri)))
+    (unless (host-bypassed-p (uri-host u) no-proxy)
+      (proxy-for-uri u proxy))))
 
 (eval-when (:compile-toplevel :load-toplevel :execute)
   (defvar *speedy-declaration* '(declare (optimize (speed 3) (safety 0) (space 0) (compilation-speed 0))))

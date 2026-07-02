@@ -413,10 +413,11 @@
                             force-binary
                             force-string
                             want-stream
-                            (proxy *default-proxy*)
+                            ((:proxy proxy-arg) *default-proxy*)
                             (insecure *not-verify-ssl*)
                             ca-path
                             &aux
+                            (proxy (resolve-proxy uri proxy-arg))
                             (proxy-uri (and proxy (quri:uri proxy)))
                             (original-user-supplied-stream stream)
                             (user-supplied-stream (if (usocket-wrapped-stream-p stream) (usocket-wrapped-stream-stream stream) stream)))

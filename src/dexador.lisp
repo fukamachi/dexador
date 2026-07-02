@@ -13,6 +13,7 @@
                 :*default-connect-timeout*
                 :*default-read-timeout*
                 :*default-proxy*
+                :*no-proxy*
                 :*verbose*
                 :*not-verify-ssl*)
   (:import-from :alexandria
@@ -29,6 +30,7 @@
            :*default-connect-timeout*
            :*default-read-timeout*
            :*default-proxy*
+           :*no-proxy*
            :*verbose*
            :*not-verify-ssl*
            :*connection-pool*
