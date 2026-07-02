@@ -167,19 +167,24 @@ domain suffix."
                                           (string-equal pattern (subseq host (- hl pl)))))))))))
               patterns)))))
 
-(defun proxy-for-uri (uri proxy)
-  "Select the proxy URL for URI from PROXY (NIL, a URL string, or a scheme/host alist)."
+(defun normalize-proxy (proxy)
+  "Normalize PROXY to the scheme/host alist form: a plain URL string (the historical
+:PROXY value) becomes ((\"*\" . url))."
   (etypecase proxy
     (null nil)
-    (string proxy)
-    (list
-     (let* ((scheme (uri-scheme uri))
-            (host (uri-host uri))
-            (host-key (and scheme host (format nil "~A://~A" scheme host))))
-       (cdr (or (and host-key (assoc host-key proxy :test #'string-equal))
-                (and scheme (assoc scheme proxy :test #'string-equal))
-                (assoc "*" proxy :test #'string-equal)
-                (assoc "all" proxy :test #'string-equal)))))))
+    (string (list (cons "*" proxy)))
+    (list proxy)))
+
+(defun proxy-for-uri (uri proxy)
+  "Select the proxy URL for URI from the scheme/host alist PROXY.
+The most specific key wins: \"scheme://host\", then scheme, then \"*\"/\"all\"."
+  (let* ((scheme (uri-scheme uri))
+         (host (uri-host uri))
+         (host-key (and scheme host (format nil "~A://~A" scheme host))))
+    (cdr (or (and host-key (assoc host-key proxy :test #'string-equal))
+             (and scheme (assoc scheme proxy :test #'string-equal))
+             (assoc "*" proxy :test #'string-equal)
+             (assoc "all" proxy :test #'string-equal)))))
 
 (defun resolve-proxy (uri proxy &optional (no-proxy *no-proxy*))
   "Return the effective proxy URL string for URI, or NIL.
@@ -187,7 +192,7 @@ PROXY is NIL, a URL string, or a scheme/host alist (see *DEFAULT-PROXY*). Return
 URI's host matches NO-PROXY."
   (let ((u (quri:uri uri)))
     (unless (host-bypassed-p (uri-host u) no-proxy)
-      (proxy-for-uri u proxy))))
+      (proxy-for-uri u (normalize-proxy proxy)))))
 
 (eval-when (:compile-toplevel :load-toplevel :execute)
   (defvar *speedy-declaration* '(declare (optimize (speed 3) (safety 0) (space 0) (compilation-speed 0))))
