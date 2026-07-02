@@ -429,7 +429,8 @@
   (labels ((make-new-connection (uri)
              (restart-case
                  (let* ((con-uri (quri:uri (or proxy uri)))
-                        (connection (usocket:socket-connect (uri-host con-uri)
+                        ;; usocket wants a bare IPv6 address, not the RFC 2732 "[::1]" URL form.
+                        (connection (usocket:socket-connect (strip-ipv6-brackets (uri-host con-uri))
                                                             (uri-port con-uri)
                                                             #-(or ecl clasp clisp allegro) :timeout #-(or ecl clasp clisp allegro) connect-timeout
                                                             :element-type '(unsigned-byte 8)))
