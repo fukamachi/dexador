@@ -100,9 +100,20 @@
           "per-host key wins over per-scheme")
       (ok (equal (dexador.util:resolve-proxy "ftp://files.example.com/z" cfg) "http://p-all:1080")
           "falls back to \"*\"")))
+  (testing "IPv6 per-host proxy keys (bare and bracketed)"
+    (let ((bare '(("https://::1" . "http://p-bare:1")
+                  ("https" . "http://p-https:1")))
+          (bracketed '(("https://[::1]" . "http://p-bracket:1")
+                       ("https" . "http://p-https:1"))))
+      (ok (equal (dexador.util:resolve-proxy "https://[::1]/" bare) "http://p-bare:1")
+          "bare scheme://host key matches bracketed URI host")
+      (ok (equal (dexador.util:resolve-proxy "https://[::1]/" bracketed) "http://p-bracket:1")
+          "bracketed scheme://host key matches")))
   (testing "string proxy applies to every scheme (backward compatible)"
     (ok (equal (dexador.util:resolve-proxy "https://x.com/" "http://oneproxy:3128") "http://oneproxy:3128"))
-    (ok (null (dexador.util:resolve-proxy "https://x.com/" nil))))
+    (ok (null (dexador.util:resolve-proxy "https://x.com/" nil)))
+    (ok (null (dexador.util:resolve-proxy "https://x.com/" '(("http" . "http://p:1"))))
+        "unmatched scheme yields NIL, not an error"))
   (testing "NO_PROXY host matching"
     (ok (dexador.util:host-bypassed-p "example.com" "example.com"))
     (ok (dexador.util:host-bypassed-p "api.example.com" ".example.com"))

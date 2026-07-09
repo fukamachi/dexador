@@ -173,11 +173,15 @@ domain suffix."
 
 (defun proxy-for-uri (uri proxy)
   "Select the proxy URL for URI from the scheme/host alist PROXY.
-The most specific key wins: \"scheme://host\", then scheme, then \"*\"/\"all\"."
+The most specific key wins: \"scheme://host\", then scheme, then \"*\"/\"all\".
+IPv6 hosts are looked up both bare and bracketed so either key form matches."
   (let* ((scheme (uri-scheme uri))
-         (host (uri-host uri))
-         (host-key (and scheme host (format nil "~A://~A" scheme host))))
+         (host (and (uri-host uri) (strip-ipv6-brackets (uri-host uri))))
+         (host-key (and scheme host (format nil "~A://~A" scheme host)))
+         (bracketed-key (and scheme host (find #\: host)
+                             (format nil "~A://[~A]" scheme host))))
     (cdr (or (and host-key (assoc host-key proxy :test #'string-equal))
+             (and bracketed-key (assoc bracketed-key proxy :test #'string-equal))
              (and scheme (assoc scheme proxy :test #'string-equal))
              (assoc "*" proxy :test #'string-equal)
              (assoc "all" proxy :test #'string-equal)))))
