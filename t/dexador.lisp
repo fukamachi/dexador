@@ -412,7 +412,10 @@
                   302
                   200)
               ;; mixi.jp
-              '(:set-cookie "_auid=a8acafbaef245a806f6a308506dc95c8; domain=localhost; path=/; expires=Mon, 10-Jul-2017 12:32:47 GMT"
+              ;; No Domain attribute: cl-cookie 0.2.0 rejects domains that don't
+              ;; match the origin host (RFC 6265 5.3), and the test server host
+              ;; differs between environments (localhost vs 127.0.0.1).
+              '(:set-cookie "_auid=a8acafbaef245a806f6a308506dc95c8; path=/; expires=Mon, 10-Jul-2017 12:32:47 GMT"
                 ;; sourceforge
                 :set-cookie2 "VISITOR=55a11217d3179d198af1d003; expires=\"Tue, 08-Jul-2025 12:54:47 GMT\"; httponly; Max-Age=315360000; Path=/")
               '("ok")))
