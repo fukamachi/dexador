@@ -46,22 +46,31 @@
         thereis (let ((v (uiop:getenv name)))
                   (and v (plusp (length v)) v))))
 
+(defun make-environment-proxy (https http all)
+  (unless all
+    (cond
+      ((and https (null http))
+       (setf http https))
+      ((and http (null https))
+       (setf https http))))
+  (remove nil (list (and https (cons "https" https))
+                    (and http (cons "http" http))
+                    (and all (cons "*" all)))))
+
 (defun environment-proxy ()
   #+windows nil
   #-windows
   (let ((https (getenv-nonempty "https_proxy" "HTTPS_PROXY"))
         (http  (getenv-nonempty "http_proxy" "HTTP_PROXY"))
         (all   (getenv-nonempty "all_proxy" "ALL_PROXY")))
-    (remove nil (list (and https (cons "https" https))
-                      (and http (cons "http" http))
-                      (and all (cons "*" all))))))
+    (make-environment-proxy https http all)))
 
 (defvar *default-proxy* (environment-proxy)
   "Default proxy: NIL, a proxy URL string used for every scheme, or an alist mapping
 \"http\"/\"https\"/\"scheme://host\"/\"*\" (or \"all\") to proxy URLs. Defaults from the
-https_proxy / http_proxy environment variables with an all_proxy fallback. Honors
-*NO-PROXY*. A proxy URL may carry credentials as user:pass@host and may use the
-socks5:// scheme.")
+https_proxy / http_proxy environment variables with an all_proxy fallback. If only one
+scheme-specific variable is set, it is used for both schemes. Honors *NO-PROXY*. A proxy
+URL may carry credentials as user:pass@host and may use the socks5:// scheme.")
 
 (defvar *no-proxy* (getenv-nonempty "no_proxy" "NO_PROXY")
   "Hosts that bypass the proxy: a comma/space-separated string or a list of patterns.

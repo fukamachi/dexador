@@ -222,12 +222,9 @@ You can connect via SOCKS5 proxy.
 (dex:get "https://www.facebookcorewwwi.onion/" :proxy "socks5://127.0.0.1:9150")
 ```
 
-You can set the default proxy by setting `dex:*default-proxy*`, which defaults to the
-environment variables `https_proxy` / `http_proxy` (with an `all_proxy` fallback).
+You can set the default proxy by setting `dex:*default-proxy*`, which defaults to the value of the environment variable `https_proxy`, `http_proxy` or `all_proxy`. When only one of them is set, it is used for both HTTP and HTTPS.
 
-`:proxy` (and `dex:*default-proxy*`) may also be an alist mapping a scheme,
-`scheme://host`, or `"*"`/`"all"` to a proxy URL. The most specific key wins
-(`scheme://host`, then scheme, then `"*"`):
+You can use different proxies for different schemes or hosts by giving an alist. The most specific key wins: `scheme://host`, then a scheme, then `"*"` (or `"all"`).
 
 ```common-lisp
 (setf dex:*default-proxy*
@@ -237,21 +234,14 @@ environment variables `https_proxy` / `http_proxy` (with an `all_proxy` fallback
         ("*"     . "socks5://127.0.0.1:9150")))
 ```
 
-#### Bypassing the proxy (`NO_PROXY`)
-
-`dex:*no-proxy*` lists hosts that bypass the proxy, defaulting to the `no_proxy` /
-`NO_PROXY` environment variable. It is a comma/space-separated string (or a list) of
-patterns; `"*"` bypasses every host. When the target host is an IP address (IPv4 or IPv6),
-it is compared against IP and CIDR patterns; otherwise a pattern matches the host exactly
-or as a domain suffix (a leading dot and any `:port` are ignored):
+You can bypass the proxy for particular hosts by setting `dex:*no-proxy*`, which defaults to the value of the environment variable `no_proxy`. It is a comma-separated string (or a list) of patterns. A hostname matches a pattern exactly or as a domain suffix, an IP address matches IP and CIDR patterns like `10.0.0.0/8`, and `"*"` matches every host.
 
 ```common-lisp
 (let ((dex:*no-proxy* "localhost,.internal.example.com,10.0.0.0/8,::1"))
   (dex:get "https://api.internal.example.com/")) ; connects directly, ignoring the proxy
 ```
 
-Proxy URLs may carry credentials as `user:pass@host`. Proxy support currently requires the
-usocket backend (not supported on Windows).
+Proxy URLs may carry credentials as `user:pass@host`. Proxy support is not available on Windows currently.
 
 ## Functions
 
@@ -295,8 +285,8 @@ All functions take similar arguments.
 <!-- - `force-string` -->
 - `want-stream` (boolean)
   - A flag to get the response body as a stream.
-- `proxy` (string or scheme/host alist)
-  - Proxy to use. A URL string (applied to every scheme) or an alist mapping a scheme / `scheme://host` / `"*"` to a proxy URL. Defaults to `dex:*default-proxy*` (seeded from `https_proxy` / `http_proxy` / `all_proxy`). Hosts matching `dex:*no-proxy*` (seeded from `no_proxy`) bypass the proxy. Not supported on Windows currently.
+- `proxy` (string or alist)
+  - for use proxy. A proxy URL string or an alist mapping a scheme / `scheme://host` / `"*"` to proxy URLs. Defaults to the value of `dex:*default-proxy*`. Hosts matching `dex:*no-proxy*` bypass the proxy. Not supported on windows currently
 - `insecure` (boolean)
   - To bypass SSL certificate verification (use at your own risk). The default is `NIL`, the value of `*not-verify-ssl*`.
 <!-- - `ca-path` -->

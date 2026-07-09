@@ -89,6 +89,19 @@
         (ok (equal body (format nil "lisp.org~%/foo")))))))
 
 (deftest proxy-resolution-tests
+  (testing "single environment proxy remains a fallback for both schemes"
+    (let ((http-only (dexador.util::make-environment-proxy nil "http://p-http:8080" nil))
+          (https-only (dexador.util::make-environment-proxy "http://p-https:8080" nil nil))
+          (http-and-all (dexador.util::make-environment-proxy
+                         nil "http://p-http:8080" "http://p-all:1080")))
+      (ok (equal (dexador.util:resolve-proxy "https://example.com/" http-only)
+                 "http://p-http:8080"))
+      (ok (equal (dexador.util:resolve-proxy "http://example.com/" https-only)
+                 "http://p-https:8080"))
+      (ok (equal (dexador.util:resolve-proxy "http://example.com/" http-and-all)
+                 "http://p-http:8080"))
+      (ok (equal (dexador.util:resolve-proxy "https://example.com/" http-and-all)
+                 "http://p-all:1080"))))
   (testing "per-scheme proxy alist"
     (let ((cfg '(("https" . "http://p-https:8080")
                  ("http"  . "http://p-http:8080")
