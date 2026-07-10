@@ -241,7 +241,63 @@ You can bypass the proxy for particular hosts by setting `dex:*no-proxy*`, which
   (dex:get "https://api.internal.example.com/")) ; connects directly, ignoring the proxy
 ```
 
-Proxy URLs may carry credentials as `user:pass@host`. Proxy support is not available on Windows currently.
+Proxy URLs may carry credentials as `user:pass@host`.
+
+#### Proxies on Windows
+
+**Behavior change:** older Dexador releases always connected directly on Windows
+(the WinHTTP backend ignored proxies and `http_proxy`). The WinHTTP backend now
+honors `:proxy` / `dex:*default-proxy*` (including env vars) and, when none is
+set, discovers the system proxy (Internet Options / PAC / WPAD) via
+`dex:*use-system-proxy*` (default `T`). Set it to `NIL` to restore the old
+always-direct behavior when no explicit proxy is given:
+
+```common-lisp
+(setf dex:*use-system-proxy* nil)
+```
+
+HTTP proxies are supported (Basic credentials as `user:pass@host`); SOCKS5 is
+not. For SOCKS5, load the usocket backend instead:
+
+```common-lisp
+(ql:quickload :dexador-usocket)
+(setf dex:*dexador-backend* :usocket)
+```
+
+Note that WinHTTP never proxies requests to loopback addresses (`localhost`, `127.0.0.1`).
+
+#### Single sign-on (Windows)
+
+The WinHTTP backend answers `Negotiate` (Kerberos/SPNEGO) and `NTLM`
+authentication challenges from servers *and* proxies (via
+`WinHttpQueryAuthSchemes` + `WinHttpSetCredentials`). When no explicit
+credentials are supplied, it uses the logged-on user's credentials — single
+sign-on against corporate proxies and intranet servers — controlled by
+`dex:*use-default-credentials*` (default `T`).
+
+Which hosts receive those credentials is controlled by
+`dex:*winhttp-autologon-policy*` (default `:medium` = intranet zone only, the
+WinHTTP default). Do **not** set `:low` outside controlled environments: it
+sends credentials to any host that challenges with NTLM/Negotiate.
+
+```common-lisp
+;; Uses the current user's credentials for intranet Negotiate/NTLM challenges:
+(dex:get "https://intranet.corp/api")
+
+(setf dex:*use-default-credentials* nil) ; never send the logged-on credentials
+
+;; Unsafe: allow SSO against any host (e.g. an IP that is not in the intranet zone)
+(setf dex:*winhttp-autologon-policy* :low)
+```
+
+Explicit credentials still take precedence and work with whichever scheme the peer selects (Basic, Digest, NTLM, Negotiate):
+
+```common-lisp
+(dex:get "https://intranet.corp/api" :basic-auth '("DOMAIN\\user" . "pass"))
+(dex:get "https://user:pass@intranet.corp/api")
+```
+
+This is WinHTTP-only; the usocket backend supports Basic and Bearer authentication only.
 
 ## Functions
 
@@ -286,7 +342,7 @@ All functions take similar arguments.
 - `want-stream` (boolean)
   - A flag to get the response body as a stream.
 - `proxy` (string or alist)
-  - for use proxy. A proxy URL string or an alist mapping a scheme / `scheme://host` / `"*"` to proxy URLs. Defaults to the value of `dex:*default-proxy*`. Hosts matching `dex:*no-proxy*` bypass the proxy. Not supported on windows currently
+  - for use proxy. A proxy URL string or an alist mapping a scheme / `scheme://host` / `"*"` to proxy URLs. Defaults to the value of `dex:*default-proxy*`. Hosts matching `dex:*no-proxy*` bypass the proxy. The WinHTTP backend (the Windows default) supports HTTP proxies only and additionally discovers the system proxy (registry / PAC / WPAD) when none is given (see `dex:*use-system-proxy*`); use the usocket backend (`dexador-usocket`) for SOCKS5 on Windows
 - `insecure` (boolean)
   - To bypass SSL certificate verification (use at your own risk). The default is `NIL`, the value of `*not-verify-ssl*`.
 <!-- - `ca-path` -->

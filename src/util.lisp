@@ -11,6 +11,7 @@
                 :uri-host
                 :uri-port
                 :uri-scheme
+                :copy-uri
                 :render-uri)
   (:import-from :usocket
                 :ipv6-host-to-vector)
@@ -19,9 +20,13 @@
            :*verbose*
            :*default-proxy*
            :*no-proxy*
+           :*use-system-proxy*
+           :*use-default-credentials*
+           :*winhttp-autologon-policy*
            :resolve-proxy
            :host-bypassed-p
            :strip-ipv6-brackets
+           :format-host-port
            :*not-verify-ssl*
            :defun-speedy
            :defun-careful
@@ -58,8 +63,6 @@
                     (and all (cons "*" all)))))
 
 (defun environment-proxy ()
-  #+windows nil
-  #-windows
   (let ((https (getenv-nonempty "https_proxy" "HTTPS_PROXY"))
         (http  (getenv-nonempty "http_proxy" "HTTP_PROXY"))
         (all   (getenv-nonempty "all_proxy" "ALL_PROXY")))
@@ -71,6 +74,30 @@
 https_proxy / http_proxy environment variables with an all_proxy fallback. If only one
 scheme-specific variable is set, it is used for both schemes. Honors *NO-PROXY*. A proxy
 URL may carry credentials as user:pass@host and may use the socks5:// scheme.")
+
+(defvar *use-system-proxy* t
+  "Windows/WinHTTP backend only: when T (default) and no proxy is given explicitly
+(via :PROXY or *DEFAULT-PROXY*), requests use the system proxy configuration --
+per-user WinINet settings (registry / Internet Options), PAC scripts and WPAD
+auto-discovery. Set to NIL to always connect directly unless a proxy is given.
+This is a behavior change from older Dexador releases, which always connected
+directly on Windows.")
+
+(defvar *use-default-credentials* t
+  "Windows/WinHTTP backend only: when T (default), Negotiate (Kerberos) and NTLM
+challenges from servers and proxies are answered with the logged-on user's
+credentials (single sign-on) when no explicit credentials were given. The hosts
+that receive those credentials are controlled by *WINHTTP-AUTOLOGON-POLICY*
+(default :MEDIUM = intranet zone only). Set to NIL to never send them.")
+
+(defvar *winhttp-autologon-policy* :medium
+  "Windows/WinHTTP backend only: when *USE-DEFAULT-CREDENTIALS* is true, which
+hosts may receive the logged-on credentials for Negotiate/NTLM.
+  :MEDIUM — intranet zone only (WinHTTP default; safe for corporate SSO)
+  :LOW    — any host (unsafe: any WWW-Authenticate: NTLM challenger can solicit
+            a Type 3 / relay; use only in controlled environments)
+  :HIGH   — never (same as *USE-DEFAULT-CREDENTIALS* = NIL)
+Ignored when *USE-DEFAULT-CREDENTIALS* is NIL (always treated as :HIGH).")
 
 (defvar *no-proxy* (getenv-nonempty "no_proxy" "NO_PROXY")
   "Hosts that bypass the proxy: a comma/space-separated string or a list of patterns.
@@ -87,6 +114,13 @@ suffix. Defaults from the no_proxy / NO_PROXY environment variable.")
             (subseq host 1 close)
             host))
       host))
+
+(defun format-host-port (host port)
+  "HOST:PORT, with IPv6 hosts in RFC 2732 brackets: \"[::1]:8080\"."
+  (let ((host (strip-ipv6-brackets host)))
+    (if (find #\: host)
+        (format nil "[~A]:~A" host port)
+        (format nil "~A:~A" host port))))
 
 (defun parse-ip-address (string)
   "Parse an IPv4 or IPv6 literal into (VALUES address-integer total-bits),
@@ -260,13 +294,19 @@ URI's host matches NO-PROXY."
 
 (defparameter *header-buffer* nil)
 
-(defun write-first-line (method uri version &optional (buffer *header-buffer*))
+(defun write-first-line (method uri version &optional (buffer *header-buffer*) absolute-form)
+  "Write the request line. With ABSOLUTE-FORM, the target is the full URI as
+required by RFC 7230 for requests sent to an HTTP proxy. Userinfo is never
+written into the request line (credentials belong in Authorization /
+Proxy-Authorization headers)."
   (fast-write-sequence (ascii-string-to-octets (string method)) buffer)
   (fast-write-byte #.(char-code #\Space) buffer)
   (fast-write-sequence (ascii-string-to-octets
-                         (format nil "~A~:[~;~:*?~A~]"
-                                 (or (uri-path uri) "/")
-                                 (uri-query uri)))
+                         (if absolute-form
+                             (render-uri (copy-uri uri :userinfo nil :fragment nil))
+                             (format nil "~A~:[~;~:*?~A~]"
+                                     (or (uri-path uri) "/")
+                                     (uri-query uri))))
                        buffer)
   (fast-write-byte #.(char-code #\Space) buffer)
   (fast-write-sequence (ecase version

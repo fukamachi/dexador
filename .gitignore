@@ -4,5 +4,7 @@
 *.lx32fsl
 *.lx64fsl
 *.x86f
+*.pyc
+__pycache__/
 *~
 .#*
