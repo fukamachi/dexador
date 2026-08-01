@@ -6,9 +6,18 @@ on:
   schedule:
     - cron: '0 15 * * *'
 
+# Proxy integration tests (dexador-integration-test) run against real mitmproxy
+# instances (plain :3128, Basic-auth :3129, SOCKS5 :3130); see .github/mitmproxy-addon.py.
+# HTTPS-through-proxy tests trust mitmproxy's self-signed CA, exported per job
+# as DEXADOR_TEST_PROXY_CA (and imported into the Windows certificate store).
+env:
+  DEXADOR_TEST_PROXY: http://127.0.0.1:3128
+  DEXADOR_TEST_AUTH_PROXY: http://127.0.0.1:3129
+  DEXADOR_TEST_SOCKS5_PROXY: socks5://127.0.0.1:3130
+
 jobs:
   test_linux:
-    name: ${{ matrix.lisp }} on ${{ matrix.os }}
+    name: ${{ matrix.lisp }} on ${{ matrix.os }} (Docker)
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
@@ -20,16 +29,35 @@ jobs:
       - name: Run tests
         run: make test
 
-  test_mac:
+  test_unix:
     name: ${{ matrix.lisp }} on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
         lisp: [sbcl-bin]
-        os: [macOS-latest]
+        os: [ubuntu-latest, macOS-latest]
 
     steps:
       - uses: actions/checkout@v1
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Start test proxies
+        run: |
+          pip install mitmproxy
+          mitmdump --mode regular --listen-host 127.0.0.1 --listen-port 3128 \
+            -s .github/mitmproxy-addon.py \
+            --set upstream_cert=false --set connection_strategy=lazy -q &
+          mitmdump --mode regular --listen-host 127.0.0.1 --listen-port 3129 \
+            -s .github/mitmproxy-addon.py --proxyauth dexador:test \
+            --set upstream_cert=false --set connection_strategy=lazy -q &
+          mitmdump --mode socks5  --listen-host 127.0.0.1 --listen-port 3130 -s .github/mitmproxy-addon.py -q &
+          for _ in $(seq 1 30); do
+            test -f "$HOME/.mitmproxy/mitmproxy-ca-cert.pem" && break
+            sleep 1
+          done
+          test -f "$HOME/.mitmproxy/mitmproxy-ca-cert.pem"
+          echo "DEXADOR_TEST_PROXY_CA=$HOME/.mitmproxy/mitmproxy-ca-cert.pem" >> "$GITHUB_ENV"
       - name: Install Roswell
         env:
           LISP: ${{ matrix.lisp }}
@@ -43,6 +71,10 @@ jobs:
         run: |
           PATH="~/.roswell/bin:$PATH"
           rove dexador-test.asd
+      - name: Run proxy integration tests
+        run: |
+          PATH="~/.roswell/bin:$PATH"
+          rove dexador-integration-test.asd
 
   test_windows:
     name: ${{ matrix.lisp }} on ${{ matrix.os }}
@@ -62,6 +94,49 @@ jobs:
         with:
           update: true
           install: mingw-w64-x86_64-openssl
+      # The winhttp backend tests need an origin reachable through a
+      # non-loopback address (WinHTTP never proxies loopback targets), and
+      # the system-proxy discovery tests rewrite the runner's registry
+      # proxy settings (HKCU Internet Settings), which is fine on a
+      # disposable runner.
+      - name: Enable winhttp proxy tests
+        shell: pwsh
+        run: |
+          $ip = (Get-NetIPAddress -AddressFamily IPv4 |
+                 Where-Object { $_.InterfaceAlias -notmatch 'Loopback' -and $_.IPAddress -notmatch '^169\.254\.' } |
+                 Select-Object -First 1).IPAddress
+          echo "DEXADOR_TEST_ORIGIN_HOST=$ip" | Out-File -FilePath $env:GITHUB_ENV -Append
+          echo "DEXADOR_TEST_MUTATE_SYSTEM_PROXY=1" | Out-File -FilePath $env:GITHUB_ENV -Append
+          New-NetFirewallRule -DisplayName dexador-test-origin `
+            -Direction Inbound -Action Allow -Protocol TCP `
+            -LocalPort 50000-60000 | Out-Null
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Start test proxies
+        shell: pwsh
+        run: |
+          pip install mitmproxy
+          $tls = @('--set','upstream_cert=false','--set','connection_strategy=lazy')
+          $plain = @('--mode','regular','--listen-host','127.0.0.1',
+                     '--listen-port','3128','-s','.github/mitmproxy-addon.py')
+          $auth = @('--mode','regular','--listen-host','127.0.0.1',
+                    '--listen-port','3129','-s','.github/mitmproxy-addon.py',
+                    '--proxyauth','dexador:test')
+          $socks = @('--mode','socks5','--listen-host','127.0.0.1',
+                     '--listen-port','3130','-s','.github/mitmproxy-addon.py','-q')
+          Start-Process mitmdump -ArgumentList ($plain + $tls + @('-q'))
+          Start-Process mitmdump -ArgumentList ($auth + $tls + @('-q'))
+          Start-Process mitmdump -ArgumentList $socks
+          $cert = "$env:USERPROFILE\.mitmproxy\mitmproxy-ca-cert.cer"
+          for ($i = 0; $i -lt 30 -and !(Test-Path $cert); $i++) {
+            Start-Sleep 1
+          }
+          if (!(Test-Path $cert)) { throw "mitmproxy CA was not generated" }
+          # Trust the generated CA: certificate store for winhttp, env var for cl+ssl.
+          certutil -addstore -f Root $cert
+          $ca = "$env:USERPROFILE\.mitmproxy\mitmproxy-ca-cert.pem"
+          echo "DEXADOR_TEST_PROXY_CA=$ca" | Out-File -FilePath $env:GITHUB_ENV -Append
       - name: Install Roswell
         env:
           LISP: ${{ matrix.lisp }}
@@ -76,3 +151,6 @@ jobs:
       - name: Run tests
         run: |
           ros -e '(handler-bind ((error (lambda (e) (uiop:print-condition-backtrace e) (uiop:quit -1)))) (ql:quickload :dexador-test))' -e '(or (rove:run :dexador-test) (uiop:quit -1))'
+      - name: Run proxy integration tests
+        run: |
+          ros -e '(handler-bind ((error (lambda (e) (uiop:print-condition-backtrace e) (uiop:quit -1)))) (ql:quickload :dexador-integration-test))' -e '(or (rove:run :dexador-integration-test) (uiop:quit -1))'

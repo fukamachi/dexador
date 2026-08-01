@@ -11,18 +11,36 @@
 
 (defun random-port ()
   "Return a port number not in use from 50000 to 60000."
+  ;; IGNORE-ERRORS: binding can fail with errors clack.test doesn't handle,
+  ;; e.g. WSAEACCES when the port is in a Windows excluded port range (Hyper-V).
   (loop for port from (+ 50000 (random 1000)) upto 60000
-        if (clack.test::port-available-p port)
+        if (ignore-errors (port-available-p port))
           return port))
 
 (defmacro testing-app ((desc &key use-connection-pool) app &body body)
-  `(let ((*clack-test-port* (random-port)))
+  ;; Disable clack.test's own port picking: its PORT-AVAILABLE-P chokes on
+  ;; Windows excluded port ranges, so choose the port with ours instead.
+  `(let* ((clack.test:*random-port* nil)
+          (*clack-test-port* (random-port))
+          (clack.test:*clack-test-access-port* *clack-test-port*))
      (clack.test:testing-app ,desc ,app
        ;; Clack's TESTING-APP sets dex:*use-connection-pool* to NIL,
        ;; but we need to change it in some tests
        (let ((dex:*use-connection-pool* ,use-connection-pool))
          (dex:clear-connection-pool)
          ,@body))))
+
+(defmacro with-proxy-capable-backend (() &body body)
+  "Run BODY with a proxy-testable backend. These tests proxy to loopback
+origins, which WinHTTP always bypasses, so use usocket on Windows.
+The winhttp backend is covered by dexador-integration-test instead."
+  #-windows `(progn ,@body)
+  #+windows `(let ((dex:*dexador-backend* :usocket))
+               ,@body))
+
+(defun proxied-by (headers)
+  "Which test proxy served the response, or NIL when it was direct."
+  (gethash dexador-test.proxy:+proxied-by-header+ headers))
 
 (deftest normal-case-tests
   (testing-app ("normal case")
@@ -52,41 +70,222 @@
         (ok (equal body "/foo"))))))
 
 (deftest proxy-http-tests
-  #+windows
-  (skip "Skipped proxy tests on Windows")
+  (with-proxy-capable-backend ()
+    (testing-app ("proxy (http) case")
+        (lambda (env)
+          (let ((body (format nil "~A~%~A"
+                              (gethash "host" (getf env :headers))
+                              (getf env :request-uri))))
+            `(200 (:content-length ,(length body)) (,body))))
+      (dexador-test.proxy:with-test-proxy (proxy)
+        (let ((proxy-url (dexador-test.proxy:test-proxy-url proxy))
+              (expected (format nil "~A~%/foo"
+                                (quri:uri-authority (quri:uri (localhost))))))
+          (testing "GET"
+            (multiple-value-bind (body code headers)
+                (dex:get (localhost "/foo")
+                         :headers '((:x-foo . "ppp"))
+                         :proxy proxy-url)
+              (ok (eql code 200))
+              (ok (equal body expected))
+              (ok (equal (proxied-by headers) "cl-test-proxy"))))
+          (testing "HEAD"
+            (multiple-value-bind (body code headers)
+                (dex:head (localhost "/foo") :proxy proxy-url)
+              (ok (eql code 200))
+              (ok (equal body ""))
+              (ok (equal (proxied-by headers) "cl-test-proxy"))))
+          (testing "PUT"
+            (multiple-value-bind (body code headers)
+                (dex:put (localhost "/foo") :proxy proxy-url)
+              (ok (eql code 200))
+              (ok (equal body expected))
+              (ok (equal (proxied-by headers) "cl-test-proxy"))))
+          (testing "DELETE"
+            (multiple-value-bind (body code headers)
+                (dex:delete (localhost "/foo") :proxy proxy-url)
+              (ok (eql code 200))
+              (ok (equal body expected))
+              (ok (equal (proxied-by headers) "cl-test-proxy"))))
+          (testing "the proxy received absolute-form request targets"
+            (ok (every (lambda (line)
+                         (search " http://" line))
+                       (dexador-test.proxy:test-proxy-requests proxy)))))))))
+
+(deftest proxy-auth-tests
+  (with-proxy-capable-backend ()
+    (testing-app ("proxy (Basic auth) case")
+        (lambda (env)
+          (declare (ignore env))
+          '(200 (:content-length 2) ("OK")))
+      (dexador-test.proxy:with-test-proxy (proxy :basic-auth '("proxyuser" . "proxypass"))
+        (testing "no credentials -> 407"
+          (handler-case
+              (progn (dex:get (localhost "/") :proxy (dexador-test.proxy:test-proxy-url proxy))
+                     (fail "Expected HTTP-REQUEST-PROXY-AUTHENTICATION-REQUIRED"))
+            (dex:http-request-proxy-authentication-required (e)
+              (ok (eql (dex:response-status e) 407)))))
+        (testing "wrong credentials -> 407"
+          (handler-case
+              (progn (dex:get (localhost "/")
+                              :proxy (dexador-test.proxy:test-proxy-url proxy :userinfo "proxyuser:wrong"))
+                     (fail "Expected HTTP-REQUEST-PROXY-AUTHENTICATION-REQUIRED"))
+            (dex:http-request-proxy-authentication-required (e)
+              (ok (eql (dex:response-status e) 407)))))
+        (testing "user:pass@host proxy URL sends Proxy-Authorization"
+          (multiple-value-bind (body code headers)
+              (dex:get (localhost "/")
+                       :proxy (dexador-test.proxy:test-proxy-url proxy :userinfo "proxyuser:proxypass"))
+            (ok (eql code 200))
+            (ok (equal body "OK"))
+            (ok (equal (proxied-by headers) "cl-test-proxy"))))))))
+
+(deftest proxy-bypass-tests
+  (with-proxy-capable-backend ()
+    (testing-app ("proxy bypass (*no-proxy*) case")
+        (lambda (env)
+          (declare (ignore env))
+          '(200 (:content-length 2) ("OK")))
+      (dexador-test.proxy:with-test-proxy (proxy)
+        (let ((dex:*default-proxy* (dexador-test.proxy:test-proxy-url proxy)))
+          (testing "*default-proxy* routes through the proxy"
+            (multiple-value-bind (body code headers) (dex:get (localhost "/"))
+              (declare (ignore body))
+              (ok (eql code 200))
+              (ok (equal (proxied-by headers) "cl-test-proxy"))))
+          (testing "*no-proxy* pattern bypasses the proxy"
+            (let ((dex:*no-proxy* "127.0.0.0/8,localhost"))
+              (multiple-value-bind (body code headers) (dex:get (localhost "/"))
+                (declare (ignore body))
+                (ok (eql code 200))
+                (ok (null (proxied-by headers)))))))))))
+
+(deftest winhttp-ntlm-auth-tests
   #-windows
-  (testing-app ("proxy (http) case")
-      ; proxy behavior is same as direct connection if http
-      (lambda (env)
-        (let ((body (format nil "~A~%~A"
-                            (gethash "host" (getf env :headers))
-                            (getf env :request-uri))))
-          `(200 (:content-length ,(length body)) (,body))))
-    (testing "GET"
-      (multiple-value-bind (body code)
-          (dex:get "http://lisp.org/foo"
-                   :headers '((:x-foo . "ppp"))
-                   :proxy (localhost))
-        (ok (eql code 200))
-        (ok (equal body (format nil "lisp.org~%/foo")))))
-    (testing "HEAD"
-      (multiple-value-bind (body code)
-          (dex:head "http://lisp.org/foo"
-                    :proxy (localhost))
-        (ok (eql code 200))
-        (ok (equal body ""))))
-    (testing "PUT"
-      (multiple-value-bind (body code)
-          (dex:put "http://lisp.org/foo"
-                   :proxy (localhost))
-        (ok (eql code 200))
-        (ok (equal body (format nil "lisp.org~%/foo")))))
-    (testing "DELETE"
-      (multiple-value-bind (body code)
-          (dex:delete "http://lisp.org/foo"
-                      :proxy (localhost))
-        (ok (eql code 200))
-        (ok (equal body (format nil "lisp.org~%/foo")))))))
+  (skip "NTLM authentication tests target the winhttp backend (Windows only)")
+  #+windows
+  (let ((dex:*dexador-backend* :winhttp))
+    (flet ((url (server)
+             (format nil "http://127.0.0.1:~D/" (dexador-test.ntlm:ntlm-server-port server))))
+      (testing "the strongest authentication scheme is selected"
+        (ok (eq (dexador.backend.winhttp::select-auth-scheme-from-mask
+                 (logior dexador.backend.winhttp::+WINHTTP_AUTH_SCHEME_BASIC+
+                         dexador.backend.winhttp::+WINHTTP_AUTH_SCHEME_NTLM+))
+                :ntlm)))
+      (testing "autologon defaults to the intranet zone"
+        (ok (= (dexador.backend.winhttp::autologon-policy-value)
+               dexador.backend.winhttp::+WINHTTP_AUTOLOGON_SECURITY_LEVEL_MEDIUM+)))
+      (testing "explicit NTLM credentials complete the challenge/resend handshake"
+        (dexador-test.ntlm:with-ntlm-server (server)
+          (multiple-value-bind (body code)
+              (dex:get (url server) :basic-auth (cons "user" "pass") :force-string t)
+            (ok (eql code 200))
+            (ok (equal body "SSO-OK"))
+            ;; Full handshake over one kept-alive connection: Type 1 then Type 3.
+            (ok (equal (dexador-test.ntlm:ntlm-server-message-types server) '(1 3))))))
+      (testing "single sign-on engages NTLM with the logged-on credentials"
+        (dexador-test.ntlm:with-ntlm-server (server)
+          ;; :LOW is required here because the stub listens on an IP address;
+          ;; the default :MEDIUM policy only releases credentials to intranet
+          ;; zone *names*. Production code should keep :MEDIUM.
+          (let ((dex:*winhttp-autologon-policy* :low))
+            ;; The loopback logon token can't finish NTLM against a 127.0.0.1 fake,
+            ;; but the client must at least offer NTLM (a Type 1) using default
+            ;; credentials -- that is the single-sign-on path being exercised.
+            (ignore-errors (dex:get (url server)))
+            (ok (member 1 (dexador-test.ntlm:ntlm-server-message-types server))))))
+      (testing "*use-default-credentials* nil leaves the challenge unanswered"
+        (dexador-test.ntlm:with-ntlm-server (server)
+          (let ((dex:*use-default-credentials* nil))
+            (handler-case
+                (progn (dex:get (url server))
+                       (fail "Expected HTTP-REQUEST-UNAUTHORIZED"))
+              (dex:http-request-unauthorized (e)
+                (ok (eql (dex:response-status e) 401)))))
+          ;; The handshake never completes: the server never sees a Type 3.
+          ;; (WinHTTP still auto-emits a Type 1 for loopback/IP hosts, where the
+          ;; autologon HIGH policy is documented not to take effect, so we can't
+          ;; assert the server saw nothing at all.)
+          (ok (not (member 3 (dexador-test.ntlm:ntlm-server-message-types server)))))))))
+
+(deftest proxy-resolution-tests
+  (testing "single environment proxy remains a fallback for both schemes"
+    (let ((http-only (dexador.util::make-environment-proxy nil "http://p-http:8080" nil))
+          (https-only (dexador.util::make-environment-proxy "http://p-https:8080" nil nil))
+          (http-and-all (dexador.util::make-environment-proxy
+                         nil "http://p-http:8080" "http://p-all:1080")))
+      (ok (equal (dexador.util:resolve-proxy "https://example.com/" http-only)
+                 "http://p-http:8080"))
+      (ok (equal (dexador.util:resolve-proxy "http://example.com/" https-only)
+                 "http://p-https:8080"))
+      (ok (equal (dexador.util:resolve-proxy "http://example.com/" http-and-all)
+                 "http://p-http:8080"))
+      (ok (equal (dexador.util:resolve-proxy "https://example.com/" http-and-all)
+                 "http://p-all:1080"))))
+  (testing "per-scheme proxy alist"
+    (let ((cfg '(("https" . "http://p-https:8080")
+                 ("http"  . "http://p-http:8080")
+                 ("https://special.example.com" . "http://p-host:9090")
+                 ("*"     . "http://p-all:1080"))))
+      (ok (equal (dexador.util:resolve-proxy "https://api.example.com/x" cfg) "http://p-https:8080"))
+      (ok (equal (dexador.util:resolve-proxy "http://api.example.com/x" cfg) "http://p-http:8080"))
+      (ok (equal (dexador.util:resolve-proxy "https://special.example.com/y" cfg) "http://p-host:9090")
+          "per-host key wins over per-scheme")
+      (ok (equal (dexador.util:resolve-proxy "ftp://files.example.com/z" cfg) "http://p-all:1080")
+          "falls back to \"*\"")))
+  (testing "IPv6 per-host proxy keys (bare and bracketed)"
+    (let ((bare '(("https://::1" . "http://p-bare:1")
+                  ("https" . "http://p-https:1")))
+          (bracketed '(("https://[::1]" . "http://p-bracket:1")
+                       ("https" . "http://p-https:1"))))
+      (ok (equal (dexador.util:resolve-proxy "https://[::1]/" bare) "http://p-bare:1")
+          "bare scheme://host key matches bracketed URI host")
+      (ok (equal (dexador.util:resolve-proxy "https://[::1]/" bracketed) "http://p-bracket:1")
+          "bracketed scheme://host key matches")))
+  (testing "format-host-port brackets IPv6"
+    (ok (equal (dexador.util:format-host-port "example.com" 8080) "example.com:8080"))
+    (ok (equal (dexador.util:format-host-port "::1" 8080) "[::1]:8080"))
+    (ok (equal (dexador.util:format-host-port "[::1]" 8080) "[::1]:8080")))
+  (testing "absolute-form request target omits userinfo"
+    (let ((line (babel:octets-to-string
+                 (fast-io:with-fast-output (buffer)
+                   (dexador.util:write-first-line
+                    :get (quri:uri "http://user:pass@example.com/path?q=1#fragment")
+                    1.1 buffer t)))))
+      (ok (equal line (format nil "GET http://example.com/path?q=1 HTTP/1.1~C~C"
+                              #\Return #\Newline)))))
+  (testing "string proxy applies to every scheme (backward compatible)"
+    (ok (equal (dexador.util:resolve-proxy "https://x.com/" "http://oneproxy:3128") "http://oneproxy:3128"))
+    (ok (null (dexador.util:resolve-proxy "https://x.com/" nil)))
+    (ok (null (dexador.util:resolve-proxy "https://x.com/" '(("http" . "http://p:1"))))
+        "unmatched scheme yields NIL, not an error"))
+  (testing "NO_PROXY host matching"
+    (ok (dexador.util:host-bypassed-p "example.com" "example.com"))
+    (ok (dexador.util:host-bypassed-p "api.example.com" ".example.com"))
+    (ok (dexador.util:host-bypassed-p "api.example.com" "example.com"))
+    (ng (dexador.util:host-bypassed-p "notexample.com" "example.com") "suffix must align on a dot")
+    (ok (dexador.util:host-bypassed-p "anything.net" "*") "\"*\" bypasses all")
+    (ok (dexador.util:host-bypassed-p "example.com" "example.com:443") ":port in pattern is ignored")
+    (ok (dexador.util:host-bypassed-p "a.foo.org" '("bar.com" ".foo.org")) "list form")
+    (ng (dexador.util:host-bypassed-p "a.foo.org" nil)))
+  (testing "NO_PROXY IP and CIDR matching"
+    (ok (dexador.util:host-bypassed-p "127.0.0.1" "127.0.0.1"))
+    (ok (dexador.util:host-bypassed-p "127.0.0.1" "127.0.0.1:8080") ":port on an IP pattern is ignored")
+    (ok (dexador.util:host-bypassed-p "10.1.2.3" "10.0.0.0/8"))
+    (ok (dexador.util:host-bypassed-p "192.168.1.7" "no-match.com, 192.168.0.0/16"))
+    (ng (dexador.util:host-bypassed-p "11.1.2.3" "10.0.0.0/8"))
+    (ng (dexador.util:host-bypassed-p "10.1.2.3" "example.com") "IP host never matches a hostname pattern")
+    (ng (dexador.util:host-bypassed-p "1.2.3.4" "2.3.4") "IP host requires IP/CIDR match, not a suffix")
+    (ok (dexador.util:host-bypassed-p "::1" "::1"))
+    (ok (dexador.util:host-bypassed-p "[::1]" "::1") "bracketed URL form of the host")
+    (ok (dexador.util:host-bypassed-p "::1" "0:0:0:0:0:0:0:1") "IPv6 compared numerically")
+    (ok (dexador.util:host-bypassed-p "fd12:3456::1" "fd00::/8"))
+    (ng (dexador.util:host-bypassed-p "2001:db8::1" "fd00::/8"))
+    (ng (dexador.util:host-bypassed-p "127.0.0.1" "::1") "no cross-family match"))
+  (testing "resolve-proxy honors no-proxy (bypass yields NIL)"
+    (let ((dexador.util:*no-proxy* "internal.example.com"))
+      (ok (null (dexador.util:resolve-proxy "https://internal.example.com/" "http://p:8080")))
+      (ok (equal (dexador.util:resolve-proxy "https://external.com/" "http://p:8080") "http://p:8080")))))
 
 (deftest proxy-socks5-tests
   #+windows

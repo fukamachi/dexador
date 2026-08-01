@@ -413,10 +413,11 @@
                             force-binary
                             force-string
                             want-stream
-                            (proxy *default-proxy*)
+                            ((:proxy proxy-arg) *default-proxy*)
                             (insecure *not-verify-ssl*)
                             ca-path
                             &aux
+                            (proxy (resolve-proxy uri proxy-arg))
                             (proxy-uri (and proxy (quri:uri proxy)))
                             (original-user-supplied-stream stream)
                             (user-supplied-stream (if (usocket-wrapped-stream-p stream) (usocket-wrapped-stream-stream stream) stream)))
@@ -428,9 +429,14 @@
   (labels ((make-new-connection (uri)
              (restart-case
                  (let* ((con-uri (quri:uri (or proxy uri)))
-                        (connection (usocket:socket-connect (uri-host con-uri)
+                        ;; usocket wants a bare IPv6 address, not the RFC 2732 "[::1]" URL form.
+                        ;; SBCL on Windows: usocket's connect deadline machinery signals a
+                        ;; spurious EINTR, so don't pass :timeout there.
+                        (connection (usocket:socket-connect (strip-ipv6-brackets (uri-host con-uri))
                                                             (uri-port con-uri)
-                                                            #-(or ecl clasp clisp allegro) :timeout #-(or ecl clasp clisp allegro) connect-timeout
+                                                            #-(or ecl clasp clisp allegro (and sbcl win32)) :timeout
+                                                            #-(or ecl clasp clisp allegro (and sbcl win32))
+                                                            connect-timeout
                                                             :element-type '(unsigned-byte 8)))
                         (stream
                           (usocket:socket-stream connection))
@@ -524,9 +530,14 @@
                               (equalp (cdr transfer-encoding) "chunked"))
                          (and content-length
                               (null (cdr content-length)))))
+           ;; Plain-http requests sent to an HTTP proxy use the RFC 7230 absolute-form
+           ;; target; https goes through a CONNECT tunnel and keeps origin-form.
+           ;; Recomputed on redirects (see below) so a scheme change cannot leave a
+           ;; stale absolute/origin-form choice.
+           (proxied-http-p (and proxy (string= (uri-scheme uri) "http")))
            (first-line-data
              (with-fast-output (buffer)
-               (write-first-line method uri version buffer)))
+               (write-first-line method uri version buffer proxied-http-p)))
            (headers-data
              (flet ((write-header* (name value)
                       (let ((header (assoc name headers :test #'string-equal)))
@@ -729,9 +740,10 @@
                                      (member method '(:get :head) :test #'eq)))
                             (progn ;; redirection to the same host
                               (setq uri (merge-uris location-uri uri))
+                              (setq proxied-http-p (and proxy (string= (uri-scheme uri) "http")))
                               (setq first-line-data
                                     (with-fast-output (buffer)
-                                      (write-first-line method uri version buffer)))
+                                      (write-first-line method uri version buffer proxied-http-p)))
                               (when cookie-jar
                                 ;; Rebuild cookie-headers.
                                 (setq cookie-headers (build-cookie-headers uri cookie-jar)))

@@ -13,6 +13,10 @@
                 :*default-connect-timeout*
                 :*default-read-timeout*
                 :*default-proxy*
+                :*no-proxy*
+                :*use-system-proxy*
+                :*use-default-credentials*
+                :*winhttp-autologon-policy*
                 :*verbose*
                 :*not-verify-ssl*)
   (:import-from :alexandria
@@ -29,6 +33,10 @@
            :*default-connect-timeout*
            :*default-read-timeout*
            :*default-proxy*
+           :*no-proxy*
+           :*use-system-proxy*
+           :*use-default-credentials*
+           :*winhttp-autologon-policy*
            :*verbose*
            :*not-verify-ssl*
            :*connection-pool*
