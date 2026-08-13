@@ -42,8 +42,9 @@
 (in-package :dexador)
 	   
 (defvar *dexador-backend*
-  #+windows :winhttp
-  #-windows :usocket)
+  #+dotcl :dotcl
+  #+(and (not dotcl) windows) :winhttp
+  #+(and (not dotcl) (not windows)) :usocket)
 
 (defun request (uri &rest args
                     &key method version
@@ -78,7 +79,8 @@
                    ca-path))
   (ecase *dexador-backend*
     (:usocket (apply #'uiop:symbol-call '#:dexador.backend.usocket '#:request uri args))
-    (:winhttp (apply #'uiop:symbol-call '#:dexador.backend.winhttp '#:request uri args))))
+    (:winhttp (apply #'uiop:symbol-call '#:dexador.backend.winhttp '#:request uri args))
+    (:dotcl (apply #'uiop:symbol-call '#:dexador.backend.dotcl '#:request uri args))))
 
 (defun get (uri &rest args
 	    &key (version 1.1) headers basic-auth bearer-auth cookie-jar (keep-alive t)
