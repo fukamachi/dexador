@@ -50,25 +50,37 @@
             (return-from decode-body body)))
         body)))
 
+(defun %sanitize-multipart-token (s)
+  "Strip CR/LF and double-quote characters from multipart field tokens,
+to prevent CRLF injection into Content-Disposition headers (RFC 7230 §3.2.4)."
+  (let ((s (princ-to-string s)))
+    (with-output-to-string (out)
+      (loop for ch across s
+            unless (or (char= ch #\Return)
+                       (char= ch #\Newline)
+                       (char= ch #\"))
+              do (write-char ch out)))))
+
 (defun content-disposition (key val)
   (typecase val
     (cons (content-disposition key (first val)))
     (pathname
-     (let* ((filename (file-namestring val))
+     (let* ((raw-filename (file-namestring val))
+            (filename (%sanitize-multipart-token raw-filename))
             (utf8-filename-p (find-if (lambda (char)
                                         (< 127 (char-code char)))
                                       filename)))
        (format nil "Content-Disposition: form-data; name=\"~A\"; ~:[filename=\"~A\"~;filename*=UTF-8''~A~]~C~C"
-               key
+               (%sanitize-multipart-token key)
                utf8-filename-p
                (if utf8-filename-p
                    (url-encode filename :encoding :utf-8)
                    filename)
                #\Return #\Newline)))
     (otherwise
-      (format nil "Content-Disposition: form-data; name=\"~A\"~C~C"
-              key
-              #\Return #\Newline))))
+     (format nil "Content-Disposition: form-data; name=\"~A\"~C~C"
+             (%sanitize-multipart-token key)
+             #\Return #\Newline))))
 
 (defmacro define-alist-cache (cache-name)
   (let ((var (intern (format nil "*~A*" cache-name))))

@@ -412,7 +412,7 @@
                   302
                   200)
               ;; mixi.jp
-              '(:set-cookie "_auid=a8acafbaef245a806f6a308506dc95c8; domain=localhost; path=/; expires=Mon, 10-Jul-2017 12:32:47 GMT"
+              '(:set-cookie "_auid=a8acafbaef245a806f6a308506dc95c8; domain=127.0.0.1; path=/; expires=Mon, 10-Jul-2017 12:32:47 GMT"
                 ;; sourceforge
                 :set-cookie2 "VISITOR=55a11217d3179d198af1d003; expires=\"Tue, 08-Jul-2025 12:54:47 GMT\"; httponly; Max-Age=315360000; Path=/")
               '("ok")))
@@ -803,3 +803,57 @@
             (ok (= call 5)))
           (ok (signals (dex:get (localhost "/"))
                        'dex:http-request-failed)))))))
+
+
+;; ---------- Security: CRLF injection protection (unit tests) ----------
+;;
+;; These tests exercise the low-level header serialisation helpers directly;
+;; no live HTTP server is required.
+
+(deftest crlf-injection-header-value-is-rejected
+  (flet ((write-value (v)
+           (dexador.util:with-header-output (buf)
+             (dexador.util::write-header-value v buf))))
+    (testing "plain value is written verbatim"
+      (ok (equalp (write-value "abc")
+                  (dexador.util:ascii-string-to-octets "abc"))))
+    (testing "CR in a string header value signals an error"
+      (ok (signals (write-value (format nil "a~Cb" #\Return)) 'error)))
+    (testing "LF in a string header value signals an error"
+      (ok (signals (write-value (format nil "a~Cb" #\Newline)) 'error)))
+    (testing "CRLF smuggling attempt is rejected"
+      (ok (signals (write-value (format nil "value~C~CInjected: bad" #\Return #\Newline))
+                   'error)))
+    (testing "CR byte in an octet header value is rejected"
+      (ok (signals (write-value (make-array 3 :element-type '(unsigned-byte 8)
+                                              :initial-contents (list (char-code #\a) #x0D (char-code #\b))))
+                   'error)))
+    (testing "LF byte in an octet header value is rejected"
+      (ok (signals (write-value (make-array 3 :element-type '(unsigned-byte 8)
+                                              :initial-contents (list (char-code #\a) #x0A (char-code #\b))))
+                   'error)))))
+
+(deftest crlf-injection-write-header-is-rejected
+  (testing "write-header rejects a value containing CRLF"
+    (ok (signals (dexador.util:with-header-output (buf)
+                   (dexador.util:write-header :x-evil
+                                              (format nil "ok~C~CX-Smuggled: yes"
+                                                      #\Return #\Newline)
+                                              buf))
+                 'error))))
+
+(deftest crlf-injection-multipart-content-disposition-sanitized
+  (testing "%sanitize-multipart-token strips CR, LF and double quotes"
+    (ok (string= (dexador.body::%sanitize-multipart-token
+                  (format nil "f~C~Co~Co\"bar" #\Return #\Newline #\Newline))
+                 "foobar")))
+  (testing "content-disposition name is sanitized (no CR/LF inside)"
+    (let ((cd (dexador.body::content-disposition
+               (format nil "field~C~CX-Evil: 1" #\Return #\Newline)
+               "value")))
+      ;; Any CR/LF must appear only at the very end (the terminating CRLF)
+      (let ((len (length cd)))
+        (loop for i from 0 below (- len 2)
+              for ch = (aref cd i)
+              do (ok (not (or (char= ch #\Return) (char= ch #\Newline)))
+                     (format nil "no CR/LF at position ~A" i)))))))
