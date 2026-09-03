@@ -116,11 +116,33 @@
                            (ascii-string-to-octets (string-capitalize name)))
                        buffer))
 
+(defun-speedy %octets-contain-cr-lf-p (octets)
+  "Return T if OCTETS contains a CR (#x0D) or LF (#x0A) byte."
+  (declare (type octets octets))
+  (loop for b across octets
+        do (when (or (= b #x0D) (= b #x0A))
+             (return t))))
+
+(defun-speedy %string-contains-cr-lf-p (str)
+  "Return T if STR contains a CR (#\Return) or LF (#\Newline) character."
+  (declare (type simple-string str))
+  (loop for ch across str
+        do (when (or (char= ch #\Return) (char= ch #\Newline))
+             (return t))))
+
 (defun write-header-value (value buffer)
-  (fast-write-sequence (if (typep value 'octets)
-                           value
-                           (ascii-string-to-octets (princ-to-string value)))
-                       buffer))
+  ;; Guard against CRLF injection (RFC 7230 §3.2.4): reject any CR/LF in
+  ;; header values, which would otherwise allow an attacker to smuggle
+  ;; arbitrary headers or split the HTTP request.
+  (if (typep value 'octets)
+      (progn
+        (when (%octets-contain-cr-lf-p value)
+          (error "Header value contains illegal CR/LF bytes"))
+        (fast-write-sequence value buffer))
+      (let ((str (princ-to-string value)))
+        (when (%string-contains-cr-lf-p str)
+          (error "Header value contains illegal CR/LF characters: ~S" str))
+        (fast-write-sequence (ascii-string-to-octets str) buffer))))
 
 (defun write-header (name value &optional (buffer *header-buffer*))
   (write-header-field name buffer)
