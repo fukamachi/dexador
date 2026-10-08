@@ -434,7 +434,33 @@
       (lambda (env)
         (declare (ignore env))
         '(200 () ("ok")))
-    (ok (dex:get (localhost) :verbose t))))
+    (ok (dex:get (localhost) :verbose t))
+    (flet ((verbose-output (&rest args)
+             (with-output-to-string (*standard-output*)
+               (apply #'dex:get (localhost) :verbose t args))))
+      (testing "basic-auth is redacted"
+        (let ((output (verbose-output :basic-auth '("user" . "pass"))))
+          (ok (search "Authorization: Basic " output))
+          (ng (search "dXNlcjpwYXNz" output))))
+      (testing "bearer-auth is redacted"
+        (let ((output (verbose-output :bearer-auth "secret-token")))
+          (ok (search "Authorization: Bearer " output))
+          (ng (search "secret-token" output))))
+      (testing "Authorization header given in :headers is redacted"
+        (let ((output (verbose-output :headers '(("authorization" . "Token secret-token")))))
+          (ok (search "Token " output))
+          (ng (search "secret-token" output))))
+      (testing "Proxy-Authorization is redacted"
+        (let ((output (with-output-to-string (*standard-output*)
+                        (dex:get "http://example.com/"
+                                 :verbose t
+                                 :proxy (format nil "http://proxyuser:proxypass@127.0.0.1:~D"
+                                                *clack-test-port*)))))
+          (ok (search "Proxy-Authorization: Basic " output))
+          (ng (search (base64:string-to-base64-string "proxyuser:proxypass") output))))
+      (testing "other headers are kept"
+        (let ((output (verbose-output :headers '((:x-foo . "bar")))))
+          (ok (search "X-Foo: bar" output)))))))
 
 (deftest want-stream-tests
   (testing-app ("want-stream")
