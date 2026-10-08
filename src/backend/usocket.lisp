@@ -208,6 +208,35 @@
                  (finish-output-buffer headers-data))
             transfer-encoding-p)))
 
+(defun redact-credential-header (line)
+  "Replace the credential in an Authorization or Proxy-Authorization header LINE,
+keeping the auth scheme so the output is still useful for debugging."
+  (let ((colon (position #\: line)))
+    (if (and colon
+             (member (subseq line 0 colon) '("authorization" "proxy-authorization")
+                     :test #'string-equal))
+        (let* ((value-start (or (position #\Space line :start (1+ colon) :test-not #'char=)
+                                (length line)))
+               (scheme-end (position #\Space line :start value-start)))
+          (concatenate 'string
+                       (subseq line 0 (or scheme-end (1+ colon)))
+                       " [REDACTED]"))
+        line)))
+
+(defun redact-credential-headers (text)
+  (with-output-to-string (out)
+    (loop for start = 0 then (1+ end)
+          for end = (position #\Newline text :start start)
+          for line = (subseq text start end)
+          for cr-p = (and (< 0 (length line))
+                          (char= (char line (1- (length line))) #\Return))
+          do (write-string (redact-credential-header
+                            (if cr-p (subseq line 0 (1- (length line))) line))
+                           out)
+             (when cr-p (write-char #\Return out))
+             (when end (write-char #\Newline out))
+          while end)))
+
 (defun print-verbose-data (direction &rest data)
   (flet ((boundary-line ()
            (let ((char (ecase direction
@@ -219,9 +248,10 @@
              (fresh-line))))
     (boundary-line)
     (dolist (d data)
-      (map nil (lambda (byte)
-                 (princ (code-char byte)))
-           d))
+      (let ((text (map 'string #'code-char d)))
+        (princ (if (eq direction :outgoing)
+                   (redact-credential-headers text)
+                   text))))
     (boundary-line)))
 
 (defun convert-body (body content-encoding content-type content-length chunkedp force-binary force-string keep-alive-p on-close)
