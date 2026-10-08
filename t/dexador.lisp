@@ -435,6 +435,8 @@
         (declare (ignore env))
         '(200 () ("ok")))
     (ok (dex:get (localhost) :verbose t))
+    ;; The WinHTTP backend ignores :verbose.
+    #-windows
     (flet ((verbose-output (&rest args)
              (with-output-to-string (*standard-output*)
                (apply #'dex:get (localhost) :verbose t args))))
