@@ -464,18 +464,24 @@ keeping the auth scheme so the output is still useful for debugging."
                                                             :element-type '(unsigned-byte 8)))
                         (stream
                           (usocket:socket-stream connection))
-                        (scheme (uri-scheme uri)))
+                        (scheme (uri-scheme uri))
+                        (success nil))
                    (declare (type string scheme))
-                   (when read-timeout
-                     #+lispworks(setf (stream:stream-read-timeout stream) read-timeout)
-                     #-lispworks(setf (usocket:socket-option connection :receive-timeout) read-timeout))
-                   (when (socks5-proxy-p proxy-uri)
-                     (ensure-socks5-connected stream stream uri method))
-                   (if (string= scheme "https")
-                       (make-ssl-stream (if (http-proxy-p proxy-uri)
-                                               (make-connect-stream uri version stream (make-proxy-authorization con-uri))
-                                               stream) ca-path ssl-key-file ssl-cert-file ssl-key-password (uri-host uri) insecure)
-                       stream))
+                   (unwind-protect
+                        (progn
+                          (when read-timeout
+                            #+lispworks(setf (stream:stream-read-timeout stream) read-timeout)
+                            #-lispworks(setf (usocket:socket-option connection :receive-timeout) read-timeout))
+                          (when (socks5-proxy-p proxy-uri)
+                            (ensure-socks5-connected stream stream uri method))
+                          (when (string= scheme "https")
+                            (setq stream
+                                  (make-ssl-stream (if (http-proxy-p proxy-uri)
+                                                       (make-connect-stream uri version stream (make-proxy-authorization con-uri))
+                                                       stream) ca-path ssl-key-file ssl-cert-file ssl-key-password (uri-host uri) insecure)))
+                          (setq success t)
+                          stream)
+                     (unless success (close stream))))
                (retry-request ()
                  :report "Retry the same request."
                  (return-from request
