@@ -105,7 +105,7 @@
              ((= next-byte (char-code #\Return))
               (fast-write-byte next-byte buf)
               (go read-lf))
-             (T
+             (t
               (fast-write-byte next-byte buf)
               (go read-cr)))))
 
@@ -118,7 +118,7 @@
              ((= next-byte (char-code #\Return))
               (fast-write-byte next-byte buf)
               (go read-lf2))
-             (T
+             (t
               (fast-write-byte next-byte buf)
               (go read-cr)))))
 
@@ -133,7 +133,7 @@
              ((= next-byte (char-code #\Return))
               (fast-write-byte next-byte buf)
               (go read-lf))
-             (T
+             (t
               (fast-write-byte next-byte buf)
               (go read-cr)))))
 
@@ -194,7 +194,7 @@
              (= status 204)    ;; No Content
              (= status 304))) ;; Not Modified
        (setq body +empty-body+))
-      (T
+      (t
        (setq body-data (make-output-buffer))
        (loop for buf of-type octets = (read-until-crlf*2 stream)
              do (funcall parser buf)

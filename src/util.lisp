@@ -96,7 +96,12 @@
 (defparameter *header-buffer* nil)
 
 (defun write-first-line (method uri version &optional (buffer *header-buffer*))
-  (fast-write-sequence (ascii-string-to-octets (string method)) buffer)
+  ;; Methods are case-sensitive and standard ones are upper case; a
+  ;; keyword's name is lower case under a case-sensitive reader.
+  (fast-write-sequence (ascii-string-to-octets (if (symbolp method)
+                                                   (string-upcase (symbol-name method))
+                                                   method))
+                       buffer)
   (fast-write-byte #.(char-code #\Space) buffer)
   (fast-write-sequence (ascii-string-to-octets
                          (format nil "~A~:[~;~:*?~A~]"
