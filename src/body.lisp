@@ -71,13 +71,16 @@
               #\Return #\Newline))))
 
 (defmacro define-alist-cache (cache-name)
-  (let ((var (intern (format nil "*~A*" cache-name))))
+  ;; SYMBOLICATE joins symbol names as the reader made them, so the
+  ;; names match in every case mode and under any *PRINT-CASE*.
+  (let ((var (alexandria:symbolicate '#:* cache-name '#:*))
+        (lookup (alexandria:symbolicate '#:lookup-in- cache-name)))
   `(progn
      (defvar ,var)
-     (defun ,(intern (format nil "LOOKUP-IN-~A" cache-name)) (elt)
+     (defun ,lookup (elt)
        (when (boundp ',var)
          (alexandria:assoc-value ,var elt)))
-     (defun (setf ,(intern (format nil "LOOKUP-IN-~A" cache-name))) (val elt)
+     (defun (setf ,lookup) (val elt)
        (when (boundp ',var)
          (setf (alexandria:assoc-value ,var elt) val))
        val))))
