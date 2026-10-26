@@ -91,7 +91,9 @@
 (deftest proxy-socks5-tests
   #+windows
   (skip "SOCKS5 proxy tests are skipped")
-  #-windows
+  #+(and (not windows) dotcl)
+  (skip "SOCKS5 handshake tests call the usocket backend, which dotcl does not use")
+  #-(or windows dotcl)
   (testing-app ("proxy (socks5) case")
       (flet ((check (uri in out)
                (flexi-streams:with-input-from-sequence (in in)
@@ -267,22 +269,22 @@
   (skip "Content-Disposition tests are skipped")
   #-windows
   (testing "content-disposition"
-    (ok (equal (dexador.backend.usocket::content-disposition "upload" #P"data/plain-file.txt")
+    (ok (equal (dexador.body::content-disposition "upload" #P"data/plain-file.txt")
                (format nil "Content-Disposition: form-data; name=\"upload\"; filename=\"plain-file.txt\"~C~C"
                        #\Return #\Newline))
         "ASCII file name")
-    (ok (equal (dexador.backend.usocket::content-disposition "upload" #P"data/plain file.txt")
+    (ok (equal (dexador.body::content-disposition "upload" #P"data/plain file.txt")
                (format nil "Content-Disposition: form-data; name=\"upload\"; filename=\"plain file.txt\"~C~C"
                        #\Return #\Newline))
         "ASCII file name with space")
     #+ecl
     (skip "Skipped because UTF-8 pathname is not allowed on ECL")
     #-ecl
-    (ok (equal (dexador.backend.usocket::content-disposition "upload" #P"data/foo-あいうえお.txt")
+    (ok (equal (dexador.body::content-disposition "upload" #P"data/foo-あいうえお.txt")
                (format nil "Content-Disposition: form-data; name=\"upload\"; filename*=UTF-8''foo-%E3%81%82%E3%81%84%E3%81%86%E3%81%88%E3%81%8A.txt~C~C"
                        #\Return #\Newline))
         "UTF-8 file name")
-    (ok (equal (dexador.backend.usocket::content-disposition "title" "ignore")
+    (ok (equal (dexador.body::content-disposition "title" "ignore")
                (format nil "Content-Disposition: form-data; name=\"title\"~C~C"
                        #\Return #\Newline))
         "string value")))
@@ -574,12 +576,14 @@
     (multiple-value-bind (b status response-headers uri opaque-socket-stream)
         (dex:get (localhost) :keep-alive t :use-connection-pool nil)
       (declare (ignorable b status response-headers uri opaque-socket-stream))
-      #+windows
+      #+(or windows dotcl)
       (ok (null opaque-socket-stream) "no socket stream")
-      #-windows
+      #-(or windows dotcl)
       (ok (open-stream-p opaque-socket-stream) "stream is kept alive")
       (ok (= status 200) "success")
-      #-windows
+      #+dotcl
+      (skip "Passing a kept-alive socket stream back in is specific to the usocket backend")
+      #-(or windows dotcl)
       (multiple-value-bind (b2 status2 response-headers2 uri2 opaque-socket-stream2)
           (dex:get (localhost) :keep-alive t :use-connection-pool nil :stream opaque-socket-stream)
         (declare (ignorable b2 response-headers2 uri2))
@@ -617,7 +621,9 @@
   ;; was returned to the pool.
   #+windows
   (skip "Skipped because connection pool is not used on Windows.")
-  #-windows
+  #+(and dotcl (not windows))
+  (skip "Skipped because the dotcl backend pools connections in HttpClient, not in dexador.connection-cache.")
+  #-(or windows dotcl)
   (let ((success-count 0)
         (error-count 0)
         (error-and-close-count 0))

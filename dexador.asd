@@ -24,10 +24,10 @@
                "trivial-mimes"
                "chipz"
                "cl-base64"
-               "usocket"
-               (:feature :windows "winhttp")
-               (:feature :windows "flexi-streams")
-               (:feature (:and (:not :windows) (:not :dexador-no-ssl)) "cl+ssl")
+               (:feature (:not :dotcl) "usocket")
+               (:feature (:and :windows (:not :dotcl)) "winhttp")
+               (:feature (:and :windows (:not :dotcl)) "flexi-streams")
+               (:feature (:and (:not :windows) (:not :dexador-no-ssl) (:not :dotcl)) "cl+ssl")
                "bordeaux-threads"
                "alexandria"
                (:version "uiop" "3.1.1"))
@@ -45,7 +45,8 @@
                  (:module "backend"
                   :depends-on ("encoding" "connection-cache" "decoding-stream" "keep-alive-stream" "body" "error" "restarts" "util")
                   :components
-                  ((:file "usocket" :if-feature (:not :windows))
-                   (:file "winhttp" :if-feature :windows))))))
+                  ((:file "usocket" :if-feature (:and (:not :windows) (:not :dotcl)))
+                   (:file "winhttp" :if-feature (:and :windows (:not :dotcl)))
+                   (:file "dotcl" :if-feature :dotcl))))))
   :description "Yet another HTTP client for Common Lisp"
   :in-order-to ((test-op (test-op "dexador-test"))))
