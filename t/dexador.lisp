@@ -831,3 +831,372 @@
             (ok (= call 5)))
           (ok (signals (dex:get (localhost "/"))
                        'dex:http-request-failed)))))))
+;;;; Request transport ownership, without sockets or TLS.
+
+(define-condition abandoned-request (serious-condition) ())
+(define-condition abandoned-stream-close-error (error) ())
+
+(defclass recording-http-stream
+    (trivial-gray-streams:fundamental-binary-input-stream
+     trivial-gray-streams:fundamental-binary-output-stream
+     trivial-gray-streams:fundamental-character-input-stream
+     trivial-gray-streams:fundamental-character-output-stream)
+  ((input :initarg :input :initform #() :reader recording-input)
+   (position :initform 0 :accessor recording-position)
+   (output :initform (make-array 0 :element-type '(unsigned-byte 8)
+                                 :adjustable t :fill-pointer 0)
+           :reader recording-output)
+   (reads :initform 0 :accessor recording-reads)
+   (listens :initform 0 :accessor recording-listens)
+   (closes :initform nil :accessor recording-closes)
+   (on-read :initarg :on-read :initform nil :reader recording-on-read)
+   (fail-close :initarg :fail-close :initform nil :reader recording-fail-close)))
+
+(defmethod stream-element-type ((stream recording-http-stream))
+  '(unsigned-byte 8))
+(defmethod trivial-gray-streams:stream-read-byte ((stream recording-http-stream))
+  (incf (recording-reads stream))
+  (when (recording-on-read stream)
+    (funcall (recording-on-read stream)))
+  (if (< (recording-position stream) (length (recording-input stream)))
+      (prog1 (aref (recording-input stream) (recording-position stream))
+        (incf (recording-position stream)))
+      :eof))
+(defmethod trivial-gray-streams:stream-read-char ((stream recording-http-stream))
+  (let ((byte (trivial-gray-streams:stream-read-byte stream)))
+    (if (eq byte :eof) :eof (code-char byte))))
+(defmethod trivial-gray-streams:stream-listen ((stream recording-http-stream))
+  (incf (recording-listens stream))
+  (< (recording-position stream) (length (recording-input stream))))
+(defmethod trivial-gray-streams:stream-write-byte ((stream recording-http-stream) byte)
+  (vector-push-extend byte (recording-output stream))
+  byte)
+(defmethod trivial-gray-streams:stream-write-char ((stream recording-http-stream) char)
+  (trivial-gray-streams:stream-write-byte stream (char-code char))
+  char)
+(defmethod trivial-gray-streams:stream-write-sequence
+    ((stream recording-http-stream) sequence start end &key)
+  (loop for index from start below end
+        for element = (elt sequence index)
+        do (trivial-gray-streams:stream-write-byte
+            stream (if (characterp element) (char-code element) element)))
+  sequence)
+(defmethod trivial-gray-streams:stream-read-sequence
+    ((stream recording-http-stream) sequence start end &key)
+  (loop for index from start below end
+        for byte = (trivial-gray-streams:stream-read-byte stream)
+        when (eq byte :eof) return index
+        do (setf (elt sequence index)
+                 (if (stringp sequence) (code-char byte) byte))
+        finally (return end)))
+
+(defmethod trivial-gray-streams:stream-force-output ((stream recording-http-stream)) nil)
+(defmethod trivial-gray-streams:stream-finish-output ((stream recording-http-stream)) nil)
+(defmethod close ((stream recording-http-stream) &key abort)
+  (push abort (recording-closes stream))
+  (call-next-method)
+  (when (recording-fail-close stream)
+    (error 'abandoned-stream-close-error))
+  t)
+
+(defun recording-response (&optional (body "abcdef") (status "200 OK"))
+  (babel:string-to-octets
+   (format nil "HTTP/1.1 ~A~C~CContent-Length: ~D~C~CContent-Type: application/octet-stream~C~CConnection: keep-alive~C~C~C~C~A"
+           status #\Return #\Newline (length body) #\Return #\Newline
+           #\Return #\Newline #\Return #\Newline #\Return #\Newline body)
+   :encoding :utf-8))
+
+(defmacro with-recording-pool (&body body)
+  `(let ((dexador.connection-cache:*connection-pool*
+           (dexador.connection-cache:make-connection-pool))
+         (dexador.connection-cache:*use-connection-pool* t))
+     (unwind-protect (progn ,@body)
+       (dexador.connection-cache:clear-connection-pool))))
+
+(defun request-from-recording-pool (stream)
+  (dexador.connection-cache:push-connection "http://ownership.test" stream #'close)
+  (dexador.backend.usocket:request
+   "http://ownership.test/" :proxy nil :want-stream t
+   :keep-alive t :use-connection-pool t))
+
+(deftest abandoned-request-closes-stream-abortively
+  (dolist (keep-alive '(nil t))
+    (let* ((original (make-condition 'abandoned-request))
+           (stream (make-instance 'recording-http-stream
+                                 :on-read (lambda () (error original))))
+           (caught (handler-case
+                       (dexador.backend.usocket:request
+                        "http://ownership.test/" :proxy nil :stream stream
+                        :want-stream t :keep-alive keep-alive :use-connection-pool nil)
+                     (abandoned-request (condition) condition))))
+      (ok (eq caught original) "The original read condition escapes")
+      (ok (equal (recording-closes stream) '(t)) "Abandoned transport is abort-closed once")
+      (ok (not (open-stream-p stream)) "The abandoned transport is closed"))))
+
+(deftest abandoned-request-preserves-condition-when-close-fails
+  (let* ((original (make-condition 'abandoned-request))
+         (stream (make-instance 'recording-http-stream :fail-close t
+                               :on-read (lambda () (error original))))
+         (caught (handler-case
+                     (dexador.backend.usocket:request
+                      "http://ownership.test/" :proxy nil :stream stream
+                      :want-stream t :keep-alive nil :use-connection-pool nil)
+                   (serious-condition (condition) condition))))
+    (ok (eq caught original) "Cleanup failure must not replace the read condition")
+    (ok (equal (recording-closes stream) '(t)) "Failing cleanup was abortive")))
+
+(deftest abandoned-request-preserves-throw-when-close-fails
+  (let* ((stream (make-instance 'recording-http-stream :fail-close t
+                               :on-read (lambda () (throw 'abandoned-request :escaped))))
+         (result (handler-case
+                     (catch 'abandoned-request
+                       (dexador.backend.usocket:request
+                        "http://ownership.test/" :proxy nil :stream stream
+                        :want-stream t :keep-alive nil :use-connection-pool nil))
+                   (error (condition) condition))))
+    (ok (eq result :escaped) "Cleanup failure must not replace THROW")
+    (ok (equal (recording-closes stream) '(t)) "Failing cleanup was abortive")))
+
+(deftest pooled-stream-abort-close-does-not-repool
+  (with-recording-pool
+    (let* ((stream (make-instance 'recording-http-stream :input (recording-response)))
+           (body (request-from-recording-pool stream))
+           (reads (recording-reads stream))
+           (listens (recording-listens stream)))
+      (ok (streamp body) "The request handed off a response stream")
+      (ok (null (recording-closes stream)) "Request did not dispose the handed-off stream")
+      (close body :abort t)
+      (ok (= reads (recording-reads stream)) "Abort does not drain unread body bytes")
+      (ok (= listens (recording-listens stream)) "Abort does not probe input availability")
+      (ok (equal (recording-closes stream) '(t)) "Abort reaches the underlying transport")
+      (ok (not (open-stream-p stream)) "Aborted transport is closed")
+      (ok (null (dexador.connection-cache:steal-connection "http://ownership.test"))
+          "Aborted transport was not returned to the pool"))))
+
+(deftest pooled-stream-normal-close-reuses-transport
+  (with-recording-pool
+    (let* ((stream (make-instance 'recording-http-stream :input (recording-response)))
+           (body (request-from-recording-pool stream))
+           (reads (recording-reads stream)))
+      (close body)
+      (ok (> (recording-reads stream) reads) "Normal close drains remaining body bytes")
+      (ok (null (recording-closes stream)) "Normal close leaves transport open")
+      (ok (open-stream-p stream))
+      (ok (eq stream (dexador.connection-cache:steal-connection "http://ownership.test"))
+          "The exact transport is available for reuse")
+      (close stream :abort t))))
+
+(deftest pooled-stream-eof-returns-transport-once
+  (with-recording-pool
+    (let* ((stream (make-instance 'recording-http-stream :input (recording-response)))
+           (body (request-from-recording-pool stream)))
+      (ok (equal (loop for byte = (read-byte body nil nil) while byte collect byte)
+                 '(97 98 99 100 101 102)))
+      (ok (eq :eof (read-byte body nil :eof)))
+      (close body)
+      (ok (null (recording-closes stream)) "EOF leaves the reusable transport open")
+      (ok (eq stream (dexador.connection-cache:steal-connection "http://ownership.test")))
+      (ok (null (dexador.connection-cache:steal-connection "http://ownership.test"))
+          "EOF and subsequent CLOSE do not duplicate pool entries")
+      (close stream :abort t))))
+
+(deftest unpooled-response-stream-caller-ownership
+  (dolist (keep-alive '(nil t))
+    (let* ((stream (make-instance 'recording-http-stream :input (recording-response)))
+           (body (dexador.backend.usocket:request
+                  "http://ownership.test/" :proxy nil :stream stream :want-stream t
+                  :keep-alive keep-alive :use-connection-pool nil)))
+      (ok (streamp body))
+      (ok (null (recording-closes stream)) "The caller owns the handed-off body")
+      (close body :abort t)
+      (ok (equal (recording-closes stream) '(t))))))
+
+(deftest error-response-stream-caller-ownership
+  (let* ((stream (make-instance 'recording-http-stream
+                               :input (recording-response "abcdef" "404 Not Found")))
+         (condition (handler-case
+                        (dexador.backend.usocket:request
+                         "http://ownership.test/" :proxy nil :stream stream :want-stream t
+                         :keep-alive nil :use-connection-pool nil)
+                      (dexador.error:http-request-failed (condition) condition)))
+         (body (dexador.error:response-body condition)))
+    (ok (streamp body))
+    (ok (null (recording-closes stream)) "HTTP error response body belongs to the caller")
+    (ok (= (read-byte body) 97) "The error body is readable after unwind")
+    (close body :abort t)
+    (ok (equal (recording-closes stream) '(t)))))
+
+;;;; Ownership at redirect and conversion boundaries.
+
+(defun recording-redirect (location &optional (connection "keep-alive"))
+  (babel:string-to-octets
+   (format nil "HTTP/1.1 302 Found~C~CLocation: ~A~C~CContent-Length: 0~C~CConnection: ~A~C~C~C~C"
+           #\Return #\Newline location #\Return #\Newline #\Return #\Newline
+           connection #\Return #\Newline #\Return #\Newline)))
+
+(deftest cross-origin-redirect-relinquishes-transferred-transport
+  (dolist (target-fails '(nil t))
+    (with-recording-pool
+      (let* ((original (make-condition 'abandoned-request))
+             (old (make-instance 'recording-http-stream
+                                 :input (recording-redirect "http://target.test/")))
+             (new (make-instance 'recording-http-stream :input (recording-response)
+                                 :on-read (when target-fails (lambda () (error original))))))
+        (dexador.connection-cache:push-connection "http://ownership.test" old #'close)
+        (dexador.connection-cache:push-connection "http://target.test" new #'close)
+        (let ((result (handler-case
+                          (dexador.backend.usocket:request
+                           "http://ownership.test/" :proxy nil :want-stream t
+                           :keep-alive t :use-connection-pool t)
+                        (abandoned-request (condition) condition))))
+          (ok (if target-fails (eq original result) (streamp result))
+              "The recursive result or original failure escapes")
+          (ok (null (recording-closes old)) "The transferred transport was not closed")
+          (ok (open-stream-p old) "The transferred transport is open")
+          (ok (eq old (dexador.connection-cache:steal-connection "http://ownership.test"))
+              "The old pool owns the original transport")
+          (if target-fails
+              (ok (equal (recording-closes new) '(t)) "The failed target is disposed once")
+              (close result :abort t))
+          (close old :abort t))))))
+
+(deftest cross-origin-failed-transfer-retains-ownership
+  (with-recording-pool
+    (let* ((stream (make-instance 'recording-http-stream
+                                  :input (recording-redirect "http://target.test/")
+                                  :fail-close t))
+           (caught (handler-case
+                       (dexador.backend.usocket:request
+                        "http://ownership.test/" :proxy nil :stream stream
+                        :want-stream t :use-connection-pool nil)
+                     (abandoned-stream-close-error (condition) condition))))
+      (ok (typep caught 'abandoned-stream-close-error) "Failed disposal escapes")
+      (ok (equal (recording-closes stream) '(t nil))
+          "A failed ordinary disposal retains ownership for guarded abort")
+      (ok (null (dexador.connection-cache:steal-connection "http://ownership.test")))
+      (ok (not (open-stream-p stream))))))
+
+(deftest conversion-failure-aborts-owned-transport
+  (dolist (mode '(:error :throw))
+    (dolist (keep-alive '(nil t))
+      (with-recording-pool
+        (let* ((bytes (recording-response))
+               (threshold (- (length bytes) 6))
+               (original (make-condition 'simple-error :format-control "Conversion failed"))
+               (stream nil))
+          (setf stream
+                (make-instance 'recording-http-stream :input bytes
+                               :on-read (lambda ()
+                                          (when (>= (recording-position stream) threshold)
+                                            (if (eq mode :throw)
+                                                (throw 'conversion :escaped)
+                                                (error original))))))
+          (dexador.connection-cache:push-connection "http://ownership.test" stream #'close)
+          (let ((caught (handler-case
+                            (catch 'conversion
+                              (dexador.backend.usocket:request
+                               "http://ownership.test/" :proxy nil :want-stream t
+                               :force-string t :keep-alive keep-alive :use-connection-pool t))
+                          (error (condition) condition))))
+            (ok (eq caught (if (eq mode :throw) :escaped original))
+                "Conversion preserves the exact ERROR or THROW value")
+            (ok (equal (recording-closes stream) '(t)) "Failed conversion aborts once")
+            (ok (not (open-stream-p stream)))
+            (ok (null (dexador.connection-cache:steal-connection "http://ownership.test")))))))))
+
+(deftest handoff-controls-keep-transport-open
+  (dolist (status '("200 OK" "400 Bad Request" "500 Internal Server Error"))
+    (with-recording-pool
+      (let* ((stream (make-instance 'recording-http-stream
+                                    :input (recording-response "abcdef" status)))
+             (body (handler-case (request-from-recording-pool stream)
+                     (dexador.error:http-request-failed (condition)
+                       (dexador.error:response-body condition)))))
+        (ok (streamp body))
+        (ok (null (recording-closes stream)) "Normal and HTTP-error bodies own live transports")
+        (ok (= 97 (read-byte body)))
+        (close body :abort t)
+        (ok (equal (recording-closes stream) '(t)))))))
+
+(deftest same-origin-method-redirect-preserves-single-owner
+  (dolist (outcome '(:success :error :throw :http-error))
+    (let* ((redirect (recording-redirect "/target"))
+           (original (make-condition 'abandoned-request))
+           (stream nil))
+      (setf stream
+            (make-instance 'recording-http-stream
+                           :input (concatenate '(vector (unsigned-byte 8)) redirect
+                                               (recording-response "abcdef"
+                                                 (if (eq outcome :http-error)
+                                                     "500 Internal Server Error" "200 OK")))
+                           :on-read (lambda ()
+                                      (when (>= (recording-position stream) (length redirect))
+                                        (case outcome
+                                          (:error (error original))
+                                          (:throw (throw 'redirect :escaped)))))))
+      (let ((result (handler-case
+                        (catch 'redirect
+                          (dexador.backend.usocket:request
+                           "http://ownership.test/" :proxy nil :method :post :stream stream
+                           :want-stream t :keep-alive t :use-connection-pool nil))
+                      (abandoned-request (condition) condition)
+                      (dexador.error:http-request-failed (condition)
+                        (dexador.error:response-body condition)))))
+        (cond
+          ((member outcome '(:success :http-error))
+           (ok (streamp result))
+           (ok (null (recording-closes stream)) "The redirected body owns the transport")
+           (ok (open-stream-p stream))
+           (ok (= 97 (read-byte result)))
+           (close result :abort t)
+           (ok (equal (recording-closes stream) '(t))))
+          (t
+           (ok (eq result (if (eq outcome :throw) :escaped original)))
+           (ok (equal (recording-closes stream) '(t)) "Recursive failure disposes only once")
+           (ok (not (open-stream-p stream)))))))))
+
+(deftest buffered-conversion-failure-discards-transport
+  (with-recording-pool
+    (let* ((bytes (babel:string-to-octets
+                   (format nil "HTTP/1.1 200 OK~C~CContent-Length: 8~C~CContent-Encoding: gzip~C~CConnection: keep-alive~C~C~C~Cnot-gzip"
+                           #\Return #\Newline #\Return #\Newline #\Return #\Newline
+                           #\Return #\Newline #\Return #\Newline)))
+           (stream (make-instance 'recording-http-stream :input bytes)))
+      (dexador.connection-cache:push-connection "http://ownership.test" stream #'close)
+      (let ((caught (handler-case
+                        (dexador.backend.usocket:request
+                         "http://ownership.test/" :proxy nil :want-stream nil
+                         :keep-alive t :use-connection-pool t)
+                      (error (condition) condition))))
+        (ok (typep caught 'error) "Buffered decompression fails")
+        (ok (equal (recording-closes stream) '(t)) "Buffered conversion failure aborts")
+        (ok (not (open-stream-p stream)))
+        (ok (null (dexador.connection-cache:steal-connection "http://ownership.test")))))))
+
+(deftest cross-origin-disabled-global-pool-disposes-transport
+  (dolist (local-pooling '(nil t))
+    (with-recording-pool
+      (let* ((dexador.backend.usocket::*default-proxy* nil)
+             (stream (make-instance 'recording-http-stream
+                        :input (recording-redirect "http://target.test/")
+                        :on-read (lambda ()
+                                   (setf dexador.connection-cache:*use-connection-pool* nil
+                                         ;; Recursive REQUEST parses this default before
+                                         ;; acquiring a transport. No socket is opened.
+                                         dexador.backend.usocket::*default-proxy*
+                                         "http://proxy.test:invalid/")))))
+        (when local-pooling
+          (dexador.connection-cache:push-connection "http://ownership.test" stream #'close))
+        (let ((caught (handler-case
+                          (dexador.backend.usocket:request
+                           "http://ownership.test/" :want-stream t :keep-alive t
+                           :use-connection-pool local-pooling
+                           :stream (unless local-pooling stream))
+                        (error (condition) condition))))
+          (ok (typep caught 'error) "Recursive proxy parsing fails before socket acquisition")
+          (ok (equal (recording-closes stream) '(nil))
+              "Disabled admission disposes the old transport before releasing ownership")
+          (ok (not (open-stream-p stream)))
+          (setf dexador.connection-cache:*use-connection-pool* t)
+          (ok (null (dexador.connection-cache:steal-connection "http://ownership.test")))
+          (when (open-stream-p stream) (close stream :abort t)))))))

@@ -505,7 +505,9 @@ keeping the auth scheme so the output is still useful for debugging."
                                       (uri-scheme uri)
                                       (uri-authority uri)) stream #'close))
            (return-stream-to-pool-or-close (stream connection-header uri)
-             (if (and (not user-supplied-stream) use-connection-pool (connection-keep-alive-p connection-header))
+             (if (and (not user-supplied-stream) use-connection-pool
+                      dexador.connection-cache:*use-connection-pool*
+                      (connection-keep-alive-p connection-header))
                  (return-stream-to-pool stream uri)
                  (when (open-stream-p stream)
                    (close stream))))
@@ -667,9 +669,10 @@ keeping the auth scheme so the output is still useful for debugging."
                       (retry-request () :report "Retry the same request."
                         (return-from request (apply #'request uri args)))
                       (ignore-and-continue () :report "Ignore the error and continue."))))
-        ;; The unwind-protect form always closes STREAM when exiting. If the
-        ;; body decides STREAM should not be closed, it should set the STREAM
-        ;; variable to NIL after done processing with it.
+        ;; A stream still owned here was never handed to a caller: it is
+        ;; abandoned by a non-local exit or superseded by a redirect or retry.
+        ;; Relinquish ownership only after a transfer completes.
+        ;; Discard it without TLS shutdown or replacing the exit in progress.
         (unwind-protect
              (tagbody
               retry
@@ -756,8 +759,14 @@ keeping the auth scheme so the output is still useful for debugging."
                         (setf (quri:uri-userinfo location-uri) nil)
                         (if (and same-server-p
                                  (or (= status 307) (= status 308)
-                                     (member method '(:get :head) :test #'eq)))
+                                     (member method '(:get :head) :test #'eq)
+                                     user-supplied-stream))
                             (progn ;; redirection to the same host
+                              ;; Keep one owner of a supplied transport when switching to GET.
+                              (unless (or (= status 307) (= status 308)
+                                          (member method '(:get :head) :test #'eq))
+                                (setf method :get
+                                      (getf args :method) :get))
                               (setq uri (merge-uris location-uri uri))
                               (setq first-line-data
                                     (with-fast-output (buffer)
@@ -775,7 +784,9 @@ keeping the auth scheme so the output is still useful for debugging."
                               (setf location-uri (quri:merge-uris location-uri uri))
                               ;; Close connection if it isn't from our connection pool or from the user and we aren't going to
                               ;; pass it to our new call.
-                              (when (not same-server-p) (return-stream-to-pool-or-close stream (gethash "connection" response-headers) uri))
+                              (when (not same-server-p)
+                                (return-stream-to-pool-or-close stream (gethash "connection" response-headers) uri)
+                                (setf stream nil))
                               (setf (getf args :headers)
                                     (nconc `((:host . ,(uri-host location-uri))) headers))
                               (setf (getf args :max-redirects)
@@ -800,62 +811,67 @@ keeping the auth scheme so the output is still useful for debugging."
                                                                                              (string-equal name "cookie"))))
                                                                                      (getf args :headers)))
                                                                     args))))))))
-                    (unwind-protect
-                         (let* ((keep-connection-alive (connection-keep-alive-p
-                                                        (gethash "connection" response-headers)))
-                                (body (convert-body body
-                                                    (gethash "content-encoding" response-headers)
-                                                    (gethash "content-type" response-headers)
-                                                    content-length
-                                                    transfer-encoding-p
-                                                    force-binary
-                                                    force-string
-                                                    keep-connection-alive
-                                                    (if (and use-connection-pool keep-connection-alive (not user-supplied-stream) (streamp body))
-                                                        (lambda (underlying-stream abort)
-                                                          (declare (ignore abort))
-                                                          (when (and underlying-stream (open-stream-p underlying-stream))
-                                                            ;; read any left overs the user may have not read (in case of errors on user side?)
-                                                            (loop while (ignore-errors (listen underlying-stream)) ;; ssl streams may close
-                                                                  do (read-byte underlying-stream nil nil))
-                                                            (when (open-stream-p underlying-stream)
-                                                              (push-connection (format nil "~A://~A"
-                                                                                       (uri-scheme uri)
-                                                                                       (uri-authority uri)) underlying-stream #'close))))
-                                                        #'dexador.keep-alive-stream:keep-alive-stream-close-underlying-stream))))
-                           ;; Raise an error when the HTTP response status code is 4xx or 50x.
-                           (when (<= 400 status)
-                             (with-retrying
-                                 (http-request-failed status
-                                                      :body body
-                                                      :headers response-headers
-                                                      :uri uri
-                                                      :method method)))
-                           ;; Have to be a little careful with the fifth value stream we return --
-                           ;; the user may be not aware that keep-alive t without use-connection-pool can leak
-                           ;; sockets, so we wrap the returned last value so when it is garbage
-                           ;; collected it gets closed.  If the user is getting a stream back as BODY,
-                           ;; then we instead add a finalizer to that stream to close it when garbage collected
-                           (return-from request
-                             (values body
-                                     status
-                                     response-headers
-                                     uri
-                                     (when (and keep-alive
-                                                (not (equalp (gethash "connection" response-headers) "close"))
-                                                (or (not use-connection-pool) user-supplied-stream))
-                                       (or (and original-user-supplied-stream ;; user provided a stream
-					        (if (usocket-wrapped-stream-p original-user-supplied-stream) ;; but, it came from us
-					            (eql (usocket-wrapped-stream-stream original-user-supplied-stream) stream) ;; and we used it
-					            (eql original-user-supplied-stream stream)) ;; user provided a bare stream
-					        original-user-supplied-stream) ;; return what the user sent without wrapping it
-                                           (if want-stream ;; add a finalizer to the body to close the stream
-                                               (progn
-                                                 (trivial-garbage:finalize body (curry #'close stream))
-                                                 stream)
-                                               (let ((wrapped-stream (make-usocket-wrapped-stream :stream stream)))
-                                                 (trivial-garbage:finalize wrapped-stream (curry #'close stream))
-                                                 wrapped-stream)))))))
-                      (finalize-connection stream (gethash "connection" response-headers) uri)
-                      (setq stream nil)))))
-          (when stream (close stream))))))))
+                    (let* ((keep-connection-alive (connection-keep-alive-p
+                                                   (gethash "connection" response-headers)))
+                           (body (convert-body body
+                                               (gethash "content-encoding" response-headers)
+                                               (gethash "content-type" response-headers)
+                                               content-length
+                                               transfer-encoding-p
+                                               force-binary
+                                               force-string
+                                               keep-connection-alive
+                                               (if (and use-connection-pool keep-connection-alive (not user-supplied-stream) (streamp body))
+                                                   (lambda (underlying-stream abort)
+                                                     (if abort
+                                                         (dexador.keep-alive-stream:keep-alive-stream-close-underlying-stream
+                                                          underlying-stream t)
+                                                         (when (and underlying-stream (open-stream-p underlying-stream))
+                                                           ;; read any left overs the user may have not read (in case of errors on user side?)
+                                                           (loop while (ignore-errors (listen underlying-stream)) ;; ssl streams may close
+                                                                 do (read-byte underlying-stream nil nil))
+                                                           (when (open-stream-p underlying-stream)
+                                                             (push-connection (format nil "~A://~A"
+                                                                                      (uri-scheme uri)
+                                                                                      (uri-authority uri)) underlying-stream #'close)))))
+                                                   #'dexador.keep-alive-stream:keep-alive-stream-close-underlying-stream))))
+                      (unwind-protect
+                           (progn
+                             ;; Raise an error when the HTTP response status code is 4xx or 50x.
+                             (when (<= 400 status)
+                               (with-retrying
+                                   (http-request-failed status
+                                                        :body body
+                                                        :headers response-headers
+                                                        :uri uri
+                                                        :method method)))
+                             ;; Have to be a little careful with the fifth value stream we return --
+                             ;; the user may be not aware that keep-alive t without use-connection-pool can leak
+                             ;; sockets, so we wrap the returned last value so when it is garbage
+                             ;; collected it gets closed.  If the user is getting a stream back as BODY,
+                             ;; then we instead add a finalizer to that stream to close it when garbage collected
+                             (return-from request
+                               (values body
+                                       status
+                                       response-headers
+                                       uri
+                                       (when (and keep-alive
+                                                  (not (equalp (gethash "connection" response-headers) "close"))
+                                                  (or (not use-connection-pool) user-supplied-stream))
+                                         (or (and original-user-supplied-stream ;; user provided a stream
+                                               (if (usocket-wrapped-stream-p original-user-supplied-stream) ;; but, it came from us
+                                                   (eql (usocket-wrapped-stream-stream original-user-supplied-stream) stream) ;; and we used it
+                                                   (eql original-user-supplied-stream stream)) ;; user provided a bare stream
+                                               original-user-supplied-stream) ;; return what the user sent without wrapping it
+                                             (if want-stream ;; add a finalizer to the body to close the stream
+                                                 (progn
+                                                   (trivial-garbage:finalize body (curry #'close stream))
+                                                   stream)
+                                                 (let ((wrapped-stream (make-usocket-wrapped-stream :stream stream)))
+                                                   (trivial-garbage:finalize wrapped-stream (curry #'close stream))
+                                                   wrapped-stream)))))))
+                        (finalize-connection stream (gethash "connection" response-headers) uri)
+                        (setq stream nil))))))
+          (when stream
+            (handler-case (close stream :abort t)
+              (error () nil)))))))))
